@@ -1,0 +1,13 @@
+includes:
+    - phpstan-baseline.neon
+parameters:
+    level: 8
+    paths:
+        - src
+    bootstrapFiles:
+        - vendor/autoload.php
+    scanFiles:
+        - src/NetherGames/Quiche/bindings/quiche.php
+    excludePaths:
+        analyse:
+            - src/NetherGames/Quiche/bindings/quiche.php

@@ -252,8 +252,8 @@ class Config{
         return $this;
     }
 
-    public function setDisableActiveMigration(bool $v) : self{
-        $this->bindings->quiche_config_set_disable_active_migration($this->config, (int) $v);
+    public function setEnableActiveMigration(bool $v) : self{
+        $this->bindings->quiche_config_set_disable_active_migration($this->config, (int) !$v);
 
         return $this;
     }

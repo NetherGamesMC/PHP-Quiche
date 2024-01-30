@@ -1,5 +1,6 @@
 <?php declare(strict_types=1);
 namespace NetherGames\Quiche\bindings;
+defined('QUICHE_PATH') or define('QUICHE_PATH', getenv('QUICHE_PATH') ?: throw new \RuntimeException('QUICHE_PATH not defined'));
 use FFI;
 use NetherGames\Quiche\bindings\double;
 interface iQuiche {}

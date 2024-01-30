@@ -17,9 +17,7 @@ use RuntimeException;
 use function define;
 use function getenv;
 
-define("QUICHE_PATH", getenv("QUICHE_PATH") ?: __DIR__ . "/../quiche");
 require_once __DIR__ . "/../vendor/autoload.php";
-require_once __DIR__ . "/../src/NetherGames/Quiche/bindings/quiche.php";
 
 class PingPongTest extends TestCase{
     /**

@@ -18,24 +18,12 @@ class WriteableQuicheStream extends QuicheStream{
         parent::__construct($bindings, $id, $connection);
     }
 
-    public function shutdown(int $reason = 0, bool $hard = false) : void{
-        $this->shutdownWriting($reason, $hard);
-    }
-
-    protected function onShutdownByPeer() : void{
-        $this->onShutdownWriting();
-
-        parent::onShutdownByPeer();
-    }
-
     public function onConnectionClose(bool $peerClosed) : void{
-        $this->onShutdownWriting();
-
-        parent::onConnectionClose($peerClosed);
+        $this->onShutdownWriting($peerClosed);
     }
 
     public function isClosed() : bool{
-        return !$this->writable;
+        return !$this->isWritable();
     }
 
     public function handleIncoming() : void{

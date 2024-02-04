@@ -243,10 +243,10 @@ class QuicheConnection{
         if($this->handleOutgoingQueue()){
             if($this->bindings->quiche_conn_is_established($this->connection)){
                 foreach($this->streams as $streamId => $stream){
+                    $stream->handleOutgoing();
+
                     if($stream->isClosed()){
                         unset($this->streams[$streamId]);
-                    }else{
-                        $stream->handleOutgoing();
                     }
                 }
 

@@ -24,26 +24,14 @@ class ReadableQuicheStream extends QuicheStream{
     }
 
     public function handleOutgoing() : void{
-        // do nothing;
-    }
-
-    public function shutdown(int $reason = 0) : void{
-        $this->shutdownReading($reason);
+        // Do nothing
     }
 
     public function onConnectionClose(bool $peerClosed) : void{
-        $this->onShutdownReading();
-
-        parent::onConnectionClose($peerClosed);
-    }
-
-    protected function onShutdownByPeer() : void{
-        $this->onShutdownReading();
-
-        parent::onShutdownByPeer();
+        $this->onShutdownReading($peerClosed);
     }
 
     public function isClosed() : bool{
-        return !$this->readable;
+        return !$this->isReadable();
     }
 }

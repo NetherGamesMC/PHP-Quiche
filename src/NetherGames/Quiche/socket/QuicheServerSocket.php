@@ -106,8 +106,6 @@ class QuicheServerSocket extends QuicheSocket{
                 );
             }
 
-            //todo: check how it's supposed to know CONNECTION_CLOSE & how the shutdown handling works here
-
             if(!$connection?->handleIncoming(
                 $buffer,
                 SocketAddress::createRevcInfo($peerAddress, $this->udpSocketAddresses[$socketId])

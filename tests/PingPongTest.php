@@ -14,8 +14,6 @@ use NetherGames\Quiche\stream\BiDirectionalQuicheStream;
 use NetherGames\Quiche\stream\QuicheStream;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
-use function define;
-use function getenv;
 
 require_once __DIR__ . "/../vendor/autoload.php";
 
@@ -26,7 +24,7 @@ class PingPongTest extends TestCase{
     private static function createServer(Closure $closure) : QuicheServerSocket{
         return new QuicheServerSocket(
             [
-                new SocketAddress("127.0.0.1", 19132),
+                new SocketAddress("127.0.0.1", 19133),
             ],
             $closure
         );
@@ -37,7 +35,7 @@ class PingPongTest extends TestCase{
      */
     private static function createClient(Closure $closure) : QuicheClientSocket{
         return new QuicheClientSocket(
-            new SocketAddress("127.0.0.1", 19132),
+            new SocketAddress("127.0.0.1", 19133),
             $closure
         );
     }
@@ -162,7 +160,8 @@ class PingPongTest extends TestCase{
                 $stream->setOnDataArrival(function(string $data) use ($writer, $stream, &$streamWriterServerDisabled) : void{
                     self::assertTrue($data === "ping", "Ping should arrive as ping");
                     $writer->write("pong");
-                    $stream->shutdown();
+                    $stream->shutdownReading();
+                    $stream->gracefulShutdownWriting();
                     $streamWriterServerDisabled = self::checkWriter($writer);
                 });
             }else if($stream === null){

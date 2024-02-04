@@ -110,6 +110,8 @@ class PingPongTest extends TestCase{
 
         $client->connect();
         $clientConnection = $client->getConnection();
+        $clientConnection->setKeylogFilePath(__DIR__ . "/client-keylog.txt");
+        $clientConnection->setQLogPath(__DIR__, "client", "qlog", "client");
         $stream = $clientConnection->openBidirectionalStream();
         $stream->setWriteBuffer($buffer = new Buffer());
 

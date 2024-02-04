@@ -70,10 +70,10 @@ class QuicheClientSocket extends QuicheSocket{
      */
     public function connect() : QuicheConnection{
         $recvInfo = quiche_recv_info_ptr::array();
-        $recvInfo->from = struct_sockaddr_ptr::castFrom($peerSockAddress = $this->localAddress->getSocketAddressFFI());
-        $recvInfo->from_len = QuicheBindings::sizeof($peerSockAddress[0]);
-        $recvInfo->to = struct_sockaddr_ptr::castFrom($localSockAddress = $this->peerAddress->getSocketAddressFFI());
-        $recvInfo->to_len = QuicheBindings::sizeof($localSockAddress[0]);
+        $recvInfo->from = struct_sockaddr_ptr::castFrom($localSockAddress = $this->localAddress->getSocketAddressFFI());
+        $recvInfo->from_len = QuicheBindings::sizeof($localSockAddress[0]);
+        $recvInfo->to = struct_sockaddr_ptr::castFrom($peerSockAddress = $this->peerAddress->getSocketAddressFFI());
+        $recvInfo->to_len = QuicheBindings::sizeof($peerSockAddress[0]);
 
         $connection = $this->bindings->quiche_connect(
             $this->peerAddress->getSocketAddress(),

@@ -27,6 +27,8 @@ use function microtime;
 use function strlen;
 
 class QuicheConnection{
+    public const QLOG_FILE_EXTENSION = 'qlog';
+
     /** @var ?string buffer for datagrams that didn't get processed */
     private ?string $sendBuffer = null;
     private quiche_send_info_ptr $sendInfo;
@@ -74,6 +76,27 @@ class QuicheConnection{
         $this->nextUnidirectionalStreamId = $isClient ? -2 : -1;
         $this->nextBidirectionalStreamId = $isClient ? -4 : -3;
         $this->sendInfo = quiche_send_info_ptr::array();
+    }
+
+    public function setQLogPath(string $logDir, string $logTitle, string $logDesc, string $prefix = '') : void{
+        $this->bindings->quiche_conn_trace_id(
+            $this->connection,
+            [&$traceId],
+            [&$traceIdLength],
+        );
+
+        $filePath = $logDir . '/' . (strlen($prefix) > 0 ? $prefix . '-' : '') . $traceId->toString($traceIdLength) . '.' . self::QLOG_FILE_EXTENSION;
+        if(!$this->bindings->quiche_conn_set_qlog_path($this->connection, $filePath, $logTitle, $logDesc)){
+            throw new RuntimeException('Failed to set qlog path');
+        }
+    }
+
+    public function setKeylogFilePath(string $keylogFilePath) : void{
+        if($this->bindings->quiche_conn_set_keylog_path($this->connection, $keylogFilePath)){
+            $this->config->enableLogKeys();
+        }else{
+            throw new RuntimeException('Failed to set keylog path');
+        }
     }
 
     /**

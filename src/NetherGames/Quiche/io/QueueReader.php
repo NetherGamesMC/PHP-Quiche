@@ -7,7 +7,7 @@ class QueueReader extends QueueIO{
         return $this->buffer->shift();
     }
 
-    public function readd(string $str) : void{
-        $this->buffer->readd($str);
+    public function unshift(string $str) : void{
+        $this->buffer->unshift($str);
     }
 }

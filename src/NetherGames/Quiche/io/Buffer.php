@@ -38,7 +38,7 @@ class Buffer{
         $this->buffer->push($str);
     }
 
-    public function readd(string $str) : void{
+    public function unshift(string $str) : void{
         $this->buffer->unshift($str);
     }
 }

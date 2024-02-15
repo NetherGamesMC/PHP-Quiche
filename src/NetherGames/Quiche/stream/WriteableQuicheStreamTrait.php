@@ -28,16 +28,12 @@ trait WriteableQuicheStreamTrait{
         }
 
         if($this->firstWrite || ($return = $this->bindings->quiche_conn_stream_writable($this->connection, $this->id, 0)) === 1){
-            $success = BufferUtils::tryWrite(
+            BufferUtils::tryWrite(
                 $this->reader,
                 $this->writeClosure ??= fn(string $data, int $length) : int => $this->bindings->quiche_conn_stream_send($this->connection, $this->id, $data, $length, (int) ($length === 0 && !$this->writable))
             );
 
             $this->firstWrite = false;
-
-            if(is_int($success)){
-                throw new RuntimeException("Failed to write to stream: " . $success);
-            }
         }elseif($return === QuicheBindings::QUICHE_ERR_INVALID_STREAM_STATE){
             $this->onShutdownWriting(true); // only way of checking STOP_SENDING :( : https://github.com/cloudflare/quiche/issues/1299
         }else{

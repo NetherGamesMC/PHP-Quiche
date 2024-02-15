@@ -396,25 +396,19 @@ class QuicheConnection{
         }
     }
 
-    private function sendDatagrams() : bool{
+    private function sendDatagrams() : void{
         if(!$this->config->hasDgramEnabled()){
-            return false;
+            return;
         }
 
         if($this->outgoingDgramBuffer === null){
             throw new LogicException("Datagram buffer is not set");
         }
 
-        $success = BufferUtils::tryWrite(
+        BufferUtils::tryWrite(
             $this->outgoingDgramBuffer,
             $this->dgramWriteClosure ??= fn(string $data, int $length) : int => $this->bindings->quiche_conn_dgram_send($this->connection, $data, $length)
         );
-
-        if(is_int($success)){
-            throw new RuntimeException("Failed to send datagram: " . $success);
-        }
-
-        return $success;
     }
 
     public function getStats() : QuicheStats{

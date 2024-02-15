@@ -14,6 +14,7 @@ use TypeError;
 use function fclose;
 use function random_bytes;
 use function str_starts_with;
+use function stream_select;
 use function stream_set_blocking;
 use function stream_socket_recvfrom;
 use function stream_socket_sendto;
@@ -32,6 +33,8 @@ class QuicheServerSocket extends QuicheSocket{
     /** @var array<string, QuicheConnection> */
     private array $connections = [];
 
+    private bool $closed = false;
+
     /**
      * @param SocketAddress[] $address
      * @param Closure         $acceptCallback function(QuicheConnection $connection, ?QuicheStream $stream) : void (stream is null for new connections)
@@ -43,11 +46,21 @@ class QuicheServerSocket extends QuicheSocket{
     }
 
     public function tick() : void{
-        foreach($this->udpSockets as $socketId => $socket){
-            try{
-                $this->readSocket($socketId, $socket);
-            }catch(TypeError){
-                // happens when the server is closed due to arrived data using callbacks
+        if($this->closed){
+            return;
+        }
+
+        $read = $this->udpSockets;
+        $write = $except = null;
+
+        $select = stream_select($read, $write, $except, 0, 0);
+        if($select !== false && $select > 0){
+            foreach($read as $socketId => $socket){
+                try{
+                    $this->readSocket($socketId, $socket);
+                }catch(TypeError $e){
+                    // happens when the server is closed due to arrived data using callbacks
+                }
             }
         }
 
@@ -62,9 +75,9 @@ class QuicheServerSocket extends QuicheSocket{
      * @param resource $socket
      */
     private function readSocket(int $socketId, $socket) : void{
-        while(($buffer = stream_socket_recvfrom($socket, $this->config->getMaxRecvUdpPayloadSize(), 0, $peerAddr)) !== false){
+        if(($buffer = stream_socket_recvfrom($socket, $this->config->getMaxRecvUdpPayloadSize(), 0, $peerAddr)) !== false){
             if(($bufferLength = strlen($buffer)) === 0){
-                continue;
+                return;
             }
 
             $scid = uint8_t_ptr::array($scidLength = QuicheBindings::QUICHE_MAX_CONN_ID_LEN);
@@ -86,7 +99,7 @@ class QuicheServerSocket extends QuicheSocket{
             );
 
             if($success < 0){
-                continue; // not a QUIC packet
+                return; // not a QUIC packet
             }
 
             $peerAddress = SocketAddress::createFromAddress($peerAddr);
@@ -250,6 +263,8 @@ class QuicheServerSocket extends QuicheSocket{
             unset($this->udpSockets[$index]);
             fclose($socket);
         }
+
+        $this->closed = true;
     }
 
     public function getConfig() : Config{

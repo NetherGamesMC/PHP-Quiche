@@ -9,18 +9,20 @@ class BufferUtils{
     /**
      * @param Closure $writer function(string $data, int $length) : int
      */
-    public static function tryWrite(QueueReader $reader, Closure $writer) : true|int{
+    public static function tryWrite(QueueReader $reader, Closure $writer) : void{
         while(($data = $reader->shift()) !== null){
             $dataLength = strlen($data);
             $written = $writer($data, $dataLength);
 
-            if($written < 0){ // PHP sockets don't go below 0, so we can safely use this on udp socket writes
-                return $written;
+            if($written <= 0){
+                $reader->unshift($data);
             }elseif($written !== $dataLength){
-                $reader->readd(substr($data, $written));
+                $reader->unshift(substr($data, $written));
+            }else{
+                continue;
             }
-        }
 
-        return true;
+            return;
+        }
     }
 }

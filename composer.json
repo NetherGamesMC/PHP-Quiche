@@ -6,11 +6,11 @@
   "require": {
     "php": "^8.2",
     "ext-ffi": "*",
-    "ext-sockets": "*"
+    "ext-sockets": "*",
+    "ircmaxell/ffime": "dev-master"
   },
   "require-dev": {
     "phpstan/phpstan": "1.10.56",
-    "ircmaxell/ffime": "dev-master",
     "phpunit/phpunit": "10.5.9"
   },
   "autoload": {
@@ -18,7 +18,7 @@
       "": ["src"]
     },
     "files": [
-      "src/NetherGames/Quiche/bindings/quiche.php"
+      "src/NetherGames/Quiche/bindings/generate.php"
     ]
   },
   "minimum-stability": "dev"

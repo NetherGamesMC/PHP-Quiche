@@ -3,6 +3,7 @@
 namespace NetherGames\Quiche\stream;
 
 use Closure;
+use NetherGames\Quiche\bindings\Quiche as QuicheBindings;
 use NetherGames\Quiche\bindings\QuicheFFI;
 use NetherGames\Quiche\bindings\struct_quiche_conn_ptr;
 use NetherGames\Quiche\bindings\uint8_t_ptr;
@@ -28,11 +29,22 @@ class BiDirectionalQuicheStream extends QuicheStream{
         parent::__construct($bindings, $id, $connection);
     }
 
-    public function setShutdownCallback(?Closure $onShutdown) : void{
+    /**
+     * @CAUTION if peerClosed, this method will only get called whenever you try to write to the stream and the stream is not writable
+     * https://github.com/cloudflare/quiche/issues/1299
+     *
+     * @param Closure $onShutdown function(bool $peerClosed) : void
+     */
+    public function setShutdownCallback(Closure $onShutdown) : void{
         $this->onShutdown = $onShutdown;
     }
 
     protected function onPartialClose(bool $peerClosed) : void{
+        // HACK: Check if the stream is closed due to STOP_SENDING when it's no longer readable
+        if($this->isWritable() && $this->bindings->quiche_conn_stream_writable($this->connection, $this->id, 0) === QuicheBindings::QUICHE_ERR_INVALID_STREAM_STATE){
+            $this->onShutdownWriting(true); // only way of checking STOP_SENDING :( : https://github.com/cloudflare/quiche/issues/1299
+        }
+
         parent::onPartialClose($peerClosed);
 
         if($this->isClosed() && $this->onShutdown !== null){

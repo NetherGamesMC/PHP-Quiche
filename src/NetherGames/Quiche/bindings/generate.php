@@ -4,10 +4,10 @@ use FFIMe\FFIMe;
 
 if(!file_exists(__DIR__ . "/quiche.php")){
     $quichePath = $argv[1] ?? getenv("QUICHE_PATH");
-    if ($quichePath === false || !is_file($quichePath)) {
+    if($quichePath === false || !is_file($quichePath)){
         echo "Quiche path not found\n";
         exit(1);
-    } else {
+    }else{
         define("QUICHE_PATH", $quichePath);
     }
 

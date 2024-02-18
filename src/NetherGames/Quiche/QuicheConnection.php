@@ -12,6 +12,7 @@ use NetherGames\Quiche\bindings\uint8_t_ptr;
 use NetherGames\Quiche\io\Buffer;
 use NetherGames\Quiche\io\BufferUtils;
 use NetherGames\Quiche\io\QueueReader;
+use NetherGames\Quiche\io\QueueWriter;
 use NetherGames\Quiche\socket\QuicheClientSocket;
 use NetherGames\Quiche\socket\QuicheServerSocket;
 use NetherGames\Quiche\socket\QuicheSocket;
@@ -21,9 +22,9 @@ use NetherGames\Quiche\stream\QuicheStream;
 use NetherGames\Quiche\stream\ReadableQuicheStream;
 use NetherGames\Quiche\stream\WriteableQuicheStream;
 use RuntimeException;
-use function array_filter;
-use function is_int;
 use function microtime;
+use function socket_send;
+use function socket_sendto;
 use function strlen;
 
 class QuicheConnection{
@@ -50,6 +51,8 @@ class QuicheConnection{
     private ?float $pingTime = null;
 
     private bool $closed = false;
+    private bool $isEstablished = false;
+
     /** @var ?Closure $onPeerClose function(bool $applicationError, int $error, ?string $reason) : void */
     private ?Closure $onPeerClose = null;
 
@@ -64,7 +67,7 @@ class QuicheConnection{
         private readonly struct_quiche_conn_ptr $connection,
         private readonly Closure $acceptCallback,
         private SocketAddress $peerAddress,
-        private int $socketId = -1,
+        private int $socketId,
     ){
         $isClient = $socket instanceof QuicheClientSocket;
 
@@ -115,20 +118,24 @@ class QuicheConnection{
     /**
      * @param Closure $incomingBuffer function(string $data) : int
      */
-    public function setDatagramBuffers(Buffer $outgoingBuffer, Closure $incomingBuffer) : void{
+    public function setDatagramBuffers(Closure $incomingBuffer) : QueueWriter{
         if(!$this->config->hasDgramEnabled()){
             throw new LogicException("Datagrams are not enabled");
         }
 
-        $this->outgoingDgramBuffer = new QueueReader($outgoingBuffer);
+        [$read, $write] = Buffer::create();
+        $this->outgoingDgramBuffer = $read;
         $this->incomingDgramBuffer = $incomingBuffer;
+
+        return $write;
     }
 
     public function handleIncoming(
         string $buffer,
+        int $length,
         quiche_recv_info_ptr $recvInfo,
     ) : bool{
-        $done = $this->bindings->quiche_conn_recv($this->connection, $buffer, strlen($buffer), $recvInfo);
+        $done = $this->bindings->quiche_conn_recv($this->connection, $buffer, $length, $recvInfo);
         if($done < 0){
             return true; // failed to process packet
         }
@@ -147,7 +154,7 @@ class QuicheConnection{
             $this->receiveDatagrams();
         }
 
-        return true;
+        return !$this->closed;
     }
 
     /**
@@ -174,24 +181,30 @@ class QuicheConnection{
         }
     }
 
-    public function getStreamCount() : int{
-        return count(array_filter($this->streams, fn(QuicheStream $stream) : bool => !$stream->isClosed()));
-    }
-
     public function isClosed() : bool{
         return $this->closed;
     }
 
-    private function getTargetAddress() : string{
-        return $this->socket instanceof QuicheServerSocket ? $this->peerAddress->getSocketAddress() : "";
+    private function sendToSocket(string $data, int $length) : int|false{
+        $socket = $this->socket->getSocketById($this->socketId);
+
+        if($this->socket instanceof QuicheServerSocket){
+            return socket_sendto($socket, $data, $length, 0, $this->peerAddress->getAddress(), $this->peerAddress->getPort());
+        }else{
+            return socket_send($socket, $data, $length, 0);
+        }
+    }
+
+    public function hasOutgoingQueue(int $socketId = null) : bool{
+        return ($socketId === null || $socketId === $this->socketId) && $this->sendBuffer !== null;
     }
 
     /**
      * @return bool true if all datagrams were sent
      */
-    private function handleOutgoingQueue() : bool{
+    public function handleOutgoingQueue() : bool{
         if($this->sendBuffer !== null){
-            $written = stream_socket_sendto($this->getSocket(), $this->sendBuffer, 0, $this->getTargetAddress());
+            $written = $this->sendToSocket($this->sendBuffer, strlen($this->sendBuffer));
 
             if($written === false){
                 return false;
@@ -199,29 +212,12 @@ class QuicheConnection{
                 $this->sendBuffer = null;
             }else{
                 $this->sendBuffer = substr($this->sendBuffer, $written);
+
+                return false;
             }
         }
 
         return true;
-    }
-
-    /**
-     * @return resource
-     */
-    private function getSocket(){
-        if($this->socket instanceof QuicheServerSocket){
-            $socket = $this->socket->getSocketById($this->socketId);
-        }else if($this->socket instanceof QuicheClientSocket){
-            $socket = $this->socket->getSocket();
-        }else{
-            throw new LogicException("Unknown socket type");
-        }
-
-        if($socket === null){
-            throw new LogicException("Socket is null");
-        }
-
-        return $socket;
     }
 
     public function ping() : void{
@@ -240,19 +236,29 @@ class QuicheConnection{
 
         $this->checkTimers();
 
-        if($this->handleOutgoingQueue()){
-            if($this->bindings->quiche_conn_is_established($this->connection)){
-                foreach($this->streams as $streamId => $stream){
-                    $stream->handleOutgoing();
+        if($this->bindings->quiche_conn_is_established($this->connection)){
+            if($this->isEstablished){
+                while(($streamId = $this->bindings->quiche_conn_stream_writable_next($this->connection)) >= 0){
+                    $stream = ($this->streams[$streamId] ?? null);
 
-                    if($stream->isClosed()){
-                        unset($this->streams[$streamId]);
+                    if($stream !== null){
+                        if(!$stream->handleOutgoing() && $stream->isClosed()){
+                            unset($this->streams[$streamId]);
+                        }
                     }
                 }
+            }else{
+                foreach($this->streams as $stream){
+                    $stream->handleOutgoing();
+                }
 
-                $this->sendDatagrams();
+                $this->isEstablished = true;
             }
 
+            $this->sendDatagrams();
+        }
+
+        if($this->sendBuffer === null){
             while(0 < ($written = $this->bindings->quiche_conn_send(
                     $this->connection,
                     $this->tempBuffer,
@@ -274,15 +280,18 @@ class QuicheConnection{
                     }
                 }
 
-                $writtenLength = stream_socket_sendto($this->getSocket(), $this->tempBuffer->toString($written), 0, $this->getTargetAddress());
+                $writtenLength = $this->sendToSocket($this->tempBuffer->toString($written), $written);
 
                 if($writtenLength === false){
                     $this->sendBuffer = $this->tempBuffer->toString($written);
-                    break;
                 }elseif($writtenLength !== $written){
                     $this->sendBuffer = substr($this->tempBuffer->toString($written), $writtenLength);
-                    break;
+                }else{
+                    continue;
                 }
+
+                $this->socket->setNonWritableSocket($this->socketId);
+                break;
             }
         }
 
@@ -374,7 +383,9 @@ class QuicheConnection{
                 ($this->acceptCallback)($this, $stream);
             }
 
-            $stream->handleIncoming();
+            if(!$stream->handleIncoming() && $stream->isClosed()){
+                unset($this->streams[$streamId]);
+            }
         }
     }
 

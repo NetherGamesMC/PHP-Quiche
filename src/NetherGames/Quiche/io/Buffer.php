@@ -2,6 +2,7 @@
 
 namespace NetherGames\Quiche\io;
 
+use Closure;
 use RuntimeException;
 use SplDoublyLinkedList;
 
@@ -10,7 +11,24 @@ class Buffer{
     /** @var SplDoublyLinkedList<string> */
     private SplDoublyLinkedList $buffer;
 
-    public function __construct(){
+    /**
+     * @param Closure|null $onWrite function() : void
+     *
+     * @return array{0: QueueReader, 1: QueueWriter}
+     */
+    public static function create(Closure $onWrite = null) : array{
+        $buffer = new self($onWrite);
+
+        return [
+            new QueueReader($buffer),
+            new QueueWriter($buffer)
+        ];
+    }
+
+    /**
+     * @param ?Closure $onFirstWrite function() : void
+     */
+    private function __construct(private ?Closure $onFirstWrite){
         $this->buffer = new SplDoublyLinkedList();
     }
 
@@ -36,6 +54,10 @@ class Buffer{
         }
 
         $this->buffer->push($str);
+
+        if($this->onFirstWrite !== null){
+            ($this->onFirstWrite)();
+        }
     }
 
     public function unshift(string $str) : void{

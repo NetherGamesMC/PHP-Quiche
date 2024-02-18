@@ -10,16 +10,15 @@ use NetherGames\Quiche\bindings\struct_sockaddr_ptr;
 use NetherGames\Quiche\QuicheConnection;
 use NetherGames\Quiche\SocketAddress;
 use RuntimeException;
+use Socket;
 use function random_bytes;
-use function stream_set_blocking;
-use function stream_socket_client;
-use function stream_socket_get_name;
-use function stream_socket_recvfrom;
+use function socket_getsockname;
+use function socket_last_error;
+use function spl_object_id;
 
 class QuicheClientSocket extends QuicheSocket{
 
-    /** @var resource $socket */
-    private $socket;
+    private Socket $socket;
     private ?QuicheConnection $connection = null;
     private SocketAddress $localAddress;
     private quiche_recv_info_ptr $recvInfo;
@@ -34,32 +33,32 @@ class QuicheClientSocket extends QuicheSocket{
     ){
         parent::__construct($acceptCallback, $enableDebugLogging);
 
-        $socket = stream_socket_client(
-            "udp://" . $peerAddress->getSocketAddress(),
-            $errno,
-            $errstr,
-            null,
-            STREAM_CLIENT_CONNECT | STREAM_CLIENT_ASYNC_CONNECT,
-        );
+        $socket = socket_create(AF_INET, SOCK_DGRAM, SOL_UDP);
 
-        if($socket === false || $errno !== 0){
-            throw new RuntimeException("Failed to create socket: {$errstr} ({$errno})");
+        if($socket === false || !socket_connect($socket, $peerAddress->getAddress(), $peerAddress->getPort())){
+            $errno = socket_last_error();
+            $errstr = socket_strerror($errno);
+            throw new RuntimeException("Failed to create socket: $errstr ($errno)");
         }
-        stream_set_blocking($socket, false);
 
         $this->socket = $socket;
 
-        $localAddress = stream_socket_get_name($this->socket, true);
-        if($localAddress === false){
+        if(socket_getsockname($socket, $localAddress, $localPort) === false){
             throw new RuntimeException("Failed to get local address");
         }
 
-        $this->localAddress = SocketAddress::createFromAddress($localAddress);
+        $this->localAddress = new SocketAddress($localAddress, $localPort);
+
+        $this->registerSocket($socket, function() : void{
+            if(!$this->readSocket()){
+                $this->connection = null;
+            }
+        });
     }
 
-    public function tick() : void{
+    protected function handleOutgoing() : void{
         if($this->connection !== null){
-            if($this->connection->isClosed() || !$this->readSocket() || !$this->connection->handleOutgoing()){
+            if($this->connection->isClosed() || !$this->connection->handleOutgoing()){
                 $this->connection = null;
             }
         }
@@ -99,7 +98,8 @@ class QuicheClientSocket extends QuicheSocket{
             $this->config,
             $connection,
             $this->acceptCallback,
-            $this->peerAddress
+            $this->peerAddress,
+            spl_object_id($this->socket)
         );
     }
 
@@ -115,8 +115,8 @@ class QuicheClientSocket extends QuicheSocket{
      * @return bool whether the connection is still alive
      */
     private function readSocket() : bool{
-        while(($buffer = stream_socket_recvfrom($this->socket, $this->config->getMaxRecvUdpPayloadSize())) !== false){
-            if(!$this->connection?->handleIncoming($buffer, $this->recvInfo)){
+        while(($length = socket_recv($this->socket, $buffer, $this->config->getMaxRecvUdpPayloadSize(), MSG_DONTWAIT)) !== false){
+            if(!$this->connection?->handleIncoming($buffer, $length, $this->recvInfo)){
                 return false;
             }
         }
@@ -126,13 +126,25 @@ class QuicheClientSocket extends QuicheSocket{
 
     public function close(bool $applicationError, int $error, string $reason) : void{
         $this->connection?->close($applicationError, $error, $reason);
+
+        parent::close($applicationError, $error, $reason);
     }
 
-
-    /**
-     * @return resource $socket
-     */
-    public function getSocket(){
+    public function getSocket() : Socket{
         return $this->socket;
+    }
+
+    public function setNonWritableSocket(int $socketId) : void{
+        if($this->isRegisteredNonWritableSocket($socketId)){
+            return;
+        }
+
+        $this->registerNonWritableSocket($this->socket, function() use ($socketId) : void{
+            if($this->connection?->handleOutgoingQueue() ?? true){
+                $this->removeNonWritableSocket($socketId);
+
+                $this->connection?->handleOutgoing();
+            }
+        });
     }
 }

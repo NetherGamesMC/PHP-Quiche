@@ -15,9 +15,15 @@ abstract class QuicheStream{
 
     abstract public function isClosed() : bool;
 
-    abstract public function handleOutgoing() : void;
+    /**
+     * @return bool Whether the stream is still open
+     */
+    abstract public function handleOutgoing() : bool;
 
-    abstract public function handleIncoming() : void;
+    /**
+     * @return bool Whether the stream is still open
+     */
+    abstract public function handleIncoming() : bool;
 
     /**
      * Called when the connection is fully or partially closed, by the local side or peer

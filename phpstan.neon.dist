@@ -10,4 +10,4 @@ parameters:
         - src/NetherGames/Quiche/bindings/quiche.php
     excludePaths:
         analyse:
-            - src/NetherGames/Quiche/bindings/quiche.php
+            - src/NetherGames/Quiche/bindings/*

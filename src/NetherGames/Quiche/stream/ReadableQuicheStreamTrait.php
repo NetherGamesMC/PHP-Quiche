@@ -15,11 +15,7 @@ trait ReadableQuicheStreamTrait{
     private ?Closure $onShutdownReading = null;
     private bool $readable = true;
 
-    public function handleIncoming() : void{
-        if(!$this->readable){
-            return;
-        }
-
+    public function handleIncoming() : bool{
         $received = $this->bindings->quiche_conn_stream_recv(
             $this->connection,
             $this->id,
@@ -28,17 +24,23 @@ trait ReadableQuicheStreamTrait{
             [&$fin]
         );
 
-        if($received === QuicheBindings::QUICHE_ERR_STREAM_RESET || $received === QuicheBindings::QUICHE_ERR_INVALID_STREAM_STATE){
+        if($received > 0){
+            ($this->onDataArrival)($this->tempBuffer->toString($received));
+
+            if($fin){
+                $this->onShutdownReading(true);
+
+                return false;
+            }
+        }else if($received === QuicheBindings::QUICHE_ERR_STREAM_RESET || $received === QuicheBindings::QUICHE_ERR_INVALID_STREAM_STATE){
             $this->onConnectionClose(true);
-        }elseif($fin){
-            $this->onShutdownReading(true);
-        }else if($received < 0){
+
+            return false;
+        }elseif($received < 0){
             throw new RuntimeException("Failed to read from stream: " . $received);
         }
 
-        if($received > 0){
-            ($this->onDataArrival)($this->tempBuffer->toString($received));
-        }
+        return true;
     }
 
     public function setShutdownReadingCallback(?Closure $onShutdownReading) : void{

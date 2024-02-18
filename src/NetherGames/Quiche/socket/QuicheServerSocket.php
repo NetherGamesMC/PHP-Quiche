@@ -10,30 +10,30 @@ use NetherGames\Quiche\Config;
 use NetherGames\Quiche\QuicheConnection;
 use NetherGames\Quiche\SocketAddress;
 use RuntimeException;
-use TypeError;
-use function fclose;
+use Socket;
+use function array_filter;
 use function random_bytes;
+use function socket_create;
+use function socket_last_error;
+use function socket_recvfrom;
+use function socket_sendto;
+use function socket_strerror;
+use function spl_object_id;
 use function str_starts_with;
-use function stream_select;
-use function stream_set_blocking;
-use function stream_socket_recvfrom;
-use function stream_socket_sendto;
 use function strlen;
 use function substr;
+use const MSG_DONTWAIT;
 
 class QuicheServerSocket extends QuicheSocket{
 
 
-    /** @var array<int, resource> */
-    private array $udpSockets = [];
     /** @var array<int, SocketAddress> */
     private array $udpSocketAddresses = [];
     /** @var array<string, int> */
     private array $udpSocketIds = [];
+
     /** @var array<string, QuicheConnection> */
     private array $connections = [];
-
-    private bool $closed = false;
 
     /**
      * @param SocketAddress[] $address
@@ -45,25 +45,7 @@ class QuicheServerSocket extends QuicheSocket{
         $this->registerUDPSockets($address);
     }
 
-    public function tick() : void{
-        if($this->closed){
-            return;
-        }
-
-        $read = $this->udpSockets;
-        $write = $except = null;
-
-        $select = stream_select($read, $write, $except, 0, 0);
-        if($select !== false && $select > 0){
-            foreach($read as $socketId => $socket){
-                try{
-                    $this->readSocket($socketId, $socket);
-                }catch(TypeError $e){
-                    // happens when the server is closed due to arrived data using callbacks
-                }
-            }
-        }
-
+    protected function handleOutgoing() : void{
         foreach($this->connections as $dcid => $connection){
             if($connection->isClosed() || !$connection->handleOutgoing()){
                 $this->removeConnection($dcid);
@@ -71,15 +53,8 @@ class QuicheServerSocket extends QuicheSocket{
         }
     }
 
-    /**
-     * @param resource $socket
-     */
-    private function readSocket(int $socketId, $socket) : void{
-        if(($buffer = stream_socket_recvfrom($socket, $this->config->getMaxRecvUdpPayloadSize(), 0, $peerAddr)) !== false){
-            if(($bufferLength = strlen($buffer)) === 0){
-                return;
-            }
-
+    private function readSocket(int $socketId, Socket $socket) : void{
+        while(($bufferLength = socket_recvfrom($socket, $buffer, $this->config->getMaxRecvUdpPayloadSize(), MSG_DONTWAIT, $peerAddr, $peerPort)) !== false){
             $scid = uint8_t_ptr::array($scidLength = QuicheBindings::QUICHE_MAX_CONN_ID_LEN);
             $dcid = uint8_t_ptr::array($dcidLength = QuicheBindings::QUICHE_MAX_CONN_ID_LEN);
             $token = uint8_t_ptr::array($tokenLength = 128);
@@ -102,7 +77,7 @@ class QuicheServerSocket extends QuicheSocket{
                 return; // not a QUIC packet
             }
 
-            $peerAddress = SocketAddress::createFromAddress($peerAddr);
+            $peerAddress = new SocketAddress($peerAddr, $peerPort);
             $connection = $this->connections[$dcidString = $dcid->toString($dcidLength)] ?? null;
             if($connection === null){ // connection is new
                 $connection = $this->createConnection(
@@ -121,9 +96,14 @@ class QuicheServerSocket extends QuicheSocket{
 
             if(!$connection?->handleIncoming(
                 $buffer,
+                $bufferLength,
                 SocketAddress::createRevcInfo($peerAddress, $this->udpSocketAddresses[$socketId])
             )){
                 $this->removeConnection($dcidString);
+
+                if($this->isClosed()){
+                    return;
+                }
             }
         }
     }
@@ -132,13 +112,10 @@ class QuicheServerSocket extends QuicheSocket{
         unset($this->connections[$dcid]);
     }
 
-    /**
-     * @param resource $socket
-     */
     private function createConnection(
         SocketAddress $peerAddr,
         int $socketId,
-        $socket,
+        Socket $socket,
         uint8_t_ptr $scid,
         int $scidLength,
         uint8_t_ptr $dcid,
@@ -150,7 +127,7 @@ class QuicheServerSocket extends QuicheSocket{
         if(!$this->bindings->quiche_version_is_supported($version)){
             $written = $this->bindings->quiche_negotiate_version($scid, $scidLength, $dcid, $dcidLength, $this->tempBuffer, $this->config->getMaxSendUdpPayloadSize());
 
-            stream_socket_sendto($socket, $this->tempBuffer->toString($written), 0, $peerAddr->getSocketAddress());
+            socket_sendto($socket, $this->tempBuffer->toString($written), $written, 0, $peerAddr->getAddress(), $peerAddr->getPort());
 
             return null;
         }
@@ -175,7 +152,8 @@ class QuicheServerSocket extends QuicheSocket{
                 $this->config->getMaxSendUdpPayloadSize()
             );
 
-            stream_socket_sendto($socket, $this->tempBuffer->toString($written), 0, $peerAddr->getSocketAddress());
+
+            socket_sendto($socket, $this->tempBuffer->toString($written), $written, 0, $peerAddr->getAddress(), $peerAddr->getPort());
 
             return null;
         }
@@ -223,30 +201,26 @@ class QuicheServerSocket extends QuicheSocket{
      * @param SocketAddress[] $address
      */
     private function registerUDPSockets(array $address) : void{
-        foreach($address as $socketId => $socketAddress){
-            $socket = stream_socket_server("udp://" . $socketAddress->getSocketAddress(), $errno, $errstr, STREAM_SERVER_BIND);
+        foreach($address as $socketAddress){
+            $socket = socket_create(STREAM_PF_INET, STREAM_SOCK_DGRAM, SOL_UDP);
 
-            if($socket === false){
-                throw new RuntimeException("Failed to bind to {$socketAddress->getSocketAddress()}: $errstr ($errno)");
+            if($socket === false || !socket_bind($socket, $socketAddress->getAddress(), $socketAddress->getPort())){
+                $errno = socket_last_error();
+                $errstr = socket_strerror($errno);
+                throw new RuntimeException("Failed to bind to socket: $errstr ($errno)");
             }
 
-            stream_set_blocking($socket, false);
-
-            $this->udpSockets[$socketId] = $socket;
-            $this->udpSocketAddresses[$socketId] = $socketAddress;
+            $this->udpSocketAddresses[$socketId = spl_object_id($socket)] = $socketAddress;
             $this->udpSocketIds[$socketAddress->getSocketAddress()] = $socketId;
+
+            $this->registerSocket($socket, function() use ($socketId, $socket){
+                $this->readSocket($socketId, $socket);
+            });
         }
     }
 
     public function getSocketIdBySocketAddress(SocketAddress $socketAddress) : int{
         return $this->udpSocketIds[$socketAddress->getSocketAddress()];
-    }
-
-    /**
-     * @return ?resource
-     */
-    public function getSocketById(int $socketId){
-        return $this->udpSockets[$socketId] ?? null;
     }
 
     public function getConnection(string $dcid) : ?QuicheConnection{
@@ -259,15 +233,36 @@ class QuicheServerSocket extends QuicheSocket{
             unset($this->connections[$dcid]);
         }
 
-        foreach($this->udpSockets as $index => $socket){
-            unset($this->udpSockets[$index]);
-            fclose($socket);
-        }
-
-        $this->closed = true;
+        parent::close($applicationError, $error, $reason);
     }
 
     public function getConfig() : Config{
         return $this->config;
+    }
+
+    public function setNonWritableSocket(int $socketId) : void{
+        if($this->isRegisteredNonWritableSocket($socketId)){
+            return;
+        }
+
+        $this->registerNonWritableSocket($this->getSocketById($socketId), function() use ($socketId) : void{
+            $connections = array_filter($this->connections, fn(QuicheConnection $connection) => $connection->hasOutgoingQueue($socketId));
+
+            $success = true;
+            foreach($connections as $connection){
+                if(!$connection->handleOutgoingQueue()){
+                    $success = false;
+                    break;
+                }
+            }
+
+            if($success){
+                $this->removeNonWritableSocket($socketId);
+
+                foreach($connections as $connection){
+                    $connection->handleOutgoing();
+                }
+            }
+        });
     }
 }

@@ -8,8 +8,8 @@ use NetherGames\Quiche\bindings\Quiche as QuicheBindings;
 use NetherGames\Quiche\io\Buffer;
 use NetherGames\Quiche\io\BufferUtils;
 use NetherGames\Quiche\io\QueueReader;
+use NetherGames\Quiche\io\QueueWriter;
 use RuntimeException;
-use function is_int;
 
 trait WriteableQuicheStreamTrait{
     private int $priority = 127; // https://github.com/cloudflare/quiche/blob/master/quiche/src/stream/mod.rs#L45
@@ -20,36 +20,45 @@ trait WriteableQuicheStreamTrait{
 
     private QueueReader $reader;
     private bool $writable = true;
-    private bool $firstWrite = true;
 
-    public function handleOutgoing() : void{ //todo: check how i'm supposed to receive STOP_SENDING
-        if(!$this->writable){
-            return; // we don't throw an exception here due to bidirectional streams & local shutdown not directly removing the stream
+    public function handleOutgoing() : bool{
+        $written = BufferUtils::tryWrite(
+            $this->reader,
+            $this->writeClosure ??= fn(string $data, int $length) : int => $this->bindings->quiche_conn_stream_send($this->connection, $this->id, $data, $length, (int) ($length === 0 && !$this->writable))
+        );
+
+        if($written === QuicheBindings::QUICHE_ERR_DONE){
+            if(($return = $this->bindings->quiche_conn_stream_writable($this->connection, $this->id, 0)) === QuicheBindings::QUICHE_ERR_INVALID_STREAM_STATE){
+                $this->onShutdownWriting(true); // only way of checking STOP_SENDING :( : https://github.com/cloudflare/quiche/issues/1299
+
+                return false;
+            }elseif($return < 0){
+                throw new RuntimeException("Failed to write to stream: " . $return);
+            }
         }
 
-        if($this->firstWrite || ($return = $this->bindings->quiche_conn_stream_writable($this->connection, $this->id, 0)) === 1){
-            BufferUtils::tryWrite(
-                $this->reader,
-                $this->writeClosure ??= fn(string $data, int $length) : int => $this->bindings->quiche_conn_stream_send($this->connection, $this->id, $data, $length, (int) ($length === 0 && !$this->writable))
-            );
-
-            $this->firstWrite = false;
-        }elseif($return === QuicheBindings::QUICHE_ERR_INVALID_STREAM_STATE){
-            $this->onShutdownWriting(true); // only way of checking STOP_SENDING :( : https://github.com/cloudflare/quiche/issues/1299
-        }else{
-            throw new RuntimeException("Failed to write to stream: " . $return);
-        }
+        return true;
     }
 
     /**
+     * @CAUTION if peerClosed, this method will only get called whenever you try to write to the stream and the stream is not writable
+     * https://github.com/cloudflare/quiche/issues/1299
+     *
      * @param ?Closure $onShutdownWriting (bool $peerClosed)
      */
     public function setShutdownWritingCallback(?Closure $onShutdownWriting) : void{
         $this->onShutdownWriting = $onShutdownWriting;
     }
 
-    public function setWriteBuffer(Buffer $buffer) : void{
-        $this->reader = new QueueReader($buffer);
+    public function setupWriter() : QueueWriter{
+        if(isset($this->reader)){
+            throw new RuntimeException("Stream already has a writer");
+        }
+
+        [$read, $write] = Buffer::create(fn() => $this->handleOutgoing());
+        $this->reader = $read;
+
+        return $write;
     }
 
     public function isWritable() : bool{

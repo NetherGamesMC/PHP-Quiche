@@ -41,6 +41,8 @@ class QuicheClientSocket extends QuicheSocket{
             throw new RuntimeException("Failed to create socket: $errstr ($errno)");
         }
 
+        $this->setupSocketSettings($socket);
+
         $this->socket = $socket;
 
         if(socket_getsockname($socket, $localAddress, $localPort) === false){

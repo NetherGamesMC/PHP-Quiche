@@ -10,6 +10,7 @@ use NetherGames\Quiche\bindings\QuicheFFI;
 use NetherGames\Quiche\bindings\string_;
 use NetherGames\Quiche\bindings\uint8_t_ptr;
 use NetherGames\Quiche\Config;
+use RuntimeException;
 use Socket;
 use function socket_select;
 use function spl_object_id;
@@ -46,6 +47,14 @@ abstract class QuicheSocket{
             $this->bindings->getFFI()->quiche_enable_debug_logging(function(CData $a){
                 print ((new string_($a))->toString()) . "\n";
             }, null);
+        }
+    }
+
+    protected function setupSocketSettings(Socket $socket) : void{
+        if(php_uname('s') !== 'Darwin'){
+            if(!socket_set_option($socket, SOL_SOCKET, SO_SNDBUF, 8 * 1024 * 1024) || !socket_set_option($socket, SOL_SOCKET, SO_RCVBUF, 8 * 1024 * 1024)){
+                throw new RuntimeException("Failed to set option on socket: " . socket_strerror(socket_last_error($socket)));
+            }
         }
     }
 

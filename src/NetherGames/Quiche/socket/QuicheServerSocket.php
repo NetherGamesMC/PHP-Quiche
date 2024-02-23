@@ -210,6 +210,8 @@ class QuicheServerSocket extends QuicheSocket{
                 throw new RuntimeException("Failed to bind to socket: $errstr ($errno)");
             }
 
+            $this->setupSocketSettings($socket);
+
             $this->udpSocketAddresses[$socketId = spl_object_id($socket)] = $socketAddress;
             $this->udpSocketIds[$socketAddress->getSocketAddress()] = $socketId;
 

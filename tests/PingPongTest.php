@@ -4,7 +4,6 @@ namespace tests;
 
 use Closure;
 use NetherGames\Quiche\Config;
-use NetherGames\Quiche\io\Buffer;
 use NetherGames\Quiche\io\QueueWriter;
 use NetherGames\Quiche\QuicheConnection;
 use NetherGames\Quiche\socket\QuicheClientSocket;
@@ -78,8 +77,7 @@ class PingPongTest extends TestCase{
 
         $server = self::createServer(function(QuicheConnection $connection, ?QuicheStream $stream) use (&$streamClosedServer, &$streamWriterServerDisabled) : void{
             if($stream instanceof BiDirectionalQuicheStream){
-                $stream->setWriteBuffer($buffer = new Buffer());
-                $writer = new QueueWriter($buffer);
+                $writer = $stream->setupWriter();
 
                 $stream->setShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedServer) : void{
                     self::assertTrue(!$peerClosed, "Peer closed should be false on server");
@@ -111,9 +109,7 @@ class PingPongTest extends TestCase{
         $clientConnection->setKeylogFilePath(__DIR__ . "/client-keylog.txt");
         $clientConnection->setQLogPath(__DIR__, "client", "qlog", "client");
         $stream = $clientConnection->openBidirectionalStream();
-        $stream->setWriteBuffer($buffer = new Buffer());
-
-        $writer = new QueueWriter($buffer);
+        $writer = $stream->setupWriter();
         $writer->write("ping");
 
         $stream->setShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedClient) : void{
@@ -149,8 +145,7 @@ class PingPongTest extends TestCase{
 
         $server = self::createServer(function(QuicheConnection $connection, ?QuicheStream $stream) use (&$streamClosedServer, &$streamWriterServerDisabled) : void{
             if($stream instanceof BiDirectionalQuicheStream){
-                $stream->setWriteBuffer($buffer = new Buffer());
-                $writer = new QueueWriter($buffer);
+                $writer = $stream->setupWriter();
 
                 $stream->setShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedServer) : void{
                     self::assertTrue(!$peerClosed, "Peer closed should be false on server");
@@ -181,9 +176,7 @@ class PingPongTest extends TestCase{
         $client->connect();
         $clientConnection = $client->getConnection();
         $stream = $clientConnection->openBidirectionalStream();
-        $stream->setWriteBuffer($buffer = new Buffer());
-
-        $writer = new QueueWriter($buffer);
+        $writer = $stream->setupWriter();
         $writer->write("ping");
 
         $stream->setShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedClient) : void{
@@ -219,8 +212,7 @@ class PingPongTest extends TestCase{
         $server = null;
         $server = self::createServer(function(QuicheConnection $connection, ?QuicheStream $stream) use (&$server, &$streamClosedServer, &$streamWriterServerDisabled) : void{
             if($stream instanceof BiDirectionalQuicheStream){
-                $stream->setWriteBuffer($buffer = new Buffer());
-                $writer = new QueueWriter($buffer);
+                $writer = $stream->setupWriter();
 
                 $stream->setShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedServer) : void{
                     self::assertTrue(!$peerClosed, "Peer closed should be false on server");
@@ -250,9 +242,7 @@ class PingPongTest extends TestCase{
         $client->connect();
         $clientConnection = $client->getConnection();
         $stream = $clientConnection->openBidirectionalStream();
-        $stream->setWriteBuffer($buffer = new Buffer());
-
-        $writer = new QueueWriter($buffer);
+        $writer = $stream->setupWriter();
         $writer->write("ping");
 
         $stream->setShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedClient) : void{

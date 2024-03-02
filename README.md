@@ -22,6 +22,8 @@ $clientSocket = new QuicheClientSocket(
 $clientConfig = $clientSocket->getConfig();
 $clientConfig->enableBidirectionalStreams();
 
+$clientSocket->connect();
+
 while(true){
     $clientSocket->tick();
 }

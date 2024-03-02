@@ -2,6 +2,8 @@
 
 namespace NetherGames\Quiche;
 
+require_once __DIR__ . "/bindings/generate.php";
+
 use FFI;
 use NetherGames\Quiche\bindings\Quiche as QuicheBindings;
 use NetherGames\Quiche\bindings\quiche_recv_info_ptr;

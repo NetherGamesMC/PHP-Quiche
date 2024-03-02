@@ -16,10 +16,7 @@
   "autoload": {
     "psr-4": {
       "": ["src"]
-    },
-    "files": [
-      "src/NetherGames/Quiche/bindings/generate.php"
-    ]
+    }
   },
   "minimum-stability": "dev"
 }

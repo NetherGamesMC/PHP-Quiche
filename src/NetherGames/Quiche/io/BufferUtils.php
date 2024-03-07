@@ -7,12 +7,15 @@ use function strlen;
 
 class BufferUtils{
     /**
-     * @param Closure $writer function(string $data, int $length) : int
+     * @param Closure $writer function(string $data, int $length, bool $isLast) : int
      */
     public static function tryWrite(QueueReader $reader, Closure $writer) : int{
-        while(($data = $reader->shift()) !== null){
+        $newData = $reader->shift();
+        while($newData !== null){
+            $data = $newData;
             $dataLength = strlen($data);
-            $written = $writer($data, $dataLength);
+            $newData = $reader->shift();
+            $written = $writer($data, $dataLength, $newData === null);
 
             if($written <= 0){
                 $reader->unshift($data);

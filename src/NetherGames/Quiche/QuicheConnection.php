@@ -418,7 +418,7 @@ class QuicheConnection{
 
         BufferUtils::tryWrite(
             $this->outgoingDgramBuffer,
-            $this->dgramWriteClosure ??= fn(string $data, int $length) : int => $this->bindings->quiche_conn_dgram_send($this->connection, $data, $length)
+            $this->dgramWriteClosure ??= fn(string $data, int $length, bool $isLast) : int => $this->bindings->quiche_conn_dgram_send($this->connection, $data, $length)
         );
     }
 

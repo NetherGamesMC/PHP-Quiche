@@ -48,6 +48,10 @@ class Buffer{
         return $this->closed;
     }
 
+    public function isEmpty() : bool{
+        return $this->buffer->isEmpty();
+    }
+
     public function write(string $str) : void{
         if($this->closed){
             throw new RuntimeException("Buffer is closed");

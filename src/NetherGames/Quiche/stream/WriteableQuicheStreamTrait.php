@@ -19,12 +19,19 @@ trait WriteableQuicheStreamTrait{
     private ?Closure $onShutdownWriting = null;
 
     private QueueReader $reader;
+    private bool $shouldShutdownWriting = false;
     private bool $writable = true;
 
     public function handleOutgoing() : bool{
         $written = BufferUtils::tryWrite(
             $this->reader,
-            $this->writeClosure ??= fn(string $data, int $length) : int => $this->bindings->quiche_conn_stream_send($this->connection, $this->id, $data, $length, (int) ($length === 0 && !$this->writable))
+            $this->writeClosure ??= function(string $data, int $length, bool $isLast) : int{
+                if($fin = ($isLast && $this->shouldShutdownWriting())){
+                    $this->onShutdownWriting(false);
+                }
+
+                return $this->bindings->quiche_conn_stream_send($this->connection, $this->id, $data, $length, (int) $fin);
+            }
         );
 
         if($written === QuicheBindings::QUICHE_ERR_DONE){
@@ -35,6 +42,8 @@ trait WriteableQuicheStreamTrait{
             }elseif($return < 0){
                 throw new RuntimeException("Failed to write to stream: " . $return);
             }
+        } elseif ($written === QuicheBindings::QUICHE_ERR_STREAM_STOPPED){
+            $this->onShutdownWriting(true);
         }
 
         return true;
@@ -65,6 +74,10 @@ trait WriteableQuicheStreamTrait{
         return $this->writable;
     }
 
+    public function shouldShutdownWriting() : bool{
+        return $this->shouldShutdownWriting;
+    }
+
     protected function onShutdownWriting(bool $peerClosed) : void{
         if(!$this->writable){
             return;
@@ -85,10 +98,17 @@ trait WriteableQuicheStreamTrait{
             throw new RuntimeException("Stream is already closed");
         }
 
-        $this->handleOutgoing(); // send the current buffer
-        $this->bindings->quiche_conn_stream_send($this->connection, $this->id, null, 0, 1);
-        $this->handleOutgoing(); // send the FIN
-        $this->onShutdownWriting(false);
+        if($this->shouldShutdownWriting()){
+            throw new RuntimeException("Stream is already marked for shutdown");
+        }
+
+        if($this->reader->isEmpty()){
+            $this->bindings->quiche_conn_stream_send($this->connection, $this->id, null, 0, 1);
+            $this->onShutdownWriting(false);
+        }else{
+            $this->shouldShutdownWriting = true;
+            $this->reader->close();
+        }
     }
 
     public function forceShutdownWriting(int $reason) : void{
@@ -103,7 +123,6 @@ trait WriteableQuicheStreamTrait{
             $reason,
         );
 
-        $this->handleOutgoing(); // send the shutdown
         $this->onShutdownWriting(false);
     }
 

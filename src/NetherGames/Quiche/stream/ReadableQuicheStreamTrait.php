@@ -26,18 +26,18 @@ trait ReadableQuicheStreamTrait{
 
         if($received > 0){
             ($this->onDataArrival)($this->tempBuffer->toString($received));
-
-            if($fin){
-                $this->onShutdownReading(true);
-
-                return false;
-            }
         }else if($received === QuicheBindings::QUICHE_ERR_STREAM_RESET || $received === QuicheBindings::QUICHE_ERR_INVALID_STREAM_STATE){
             $this->onConnectionClose(true);
 
             return false;
         }elseif($received < 0){
             throw new RuntimeException("Failed to read from stream: " . $received);
+        }
+
+        if($fin){
+            $this->onShutdownReading(true);
+
+            return false;
         }
 
         return true;

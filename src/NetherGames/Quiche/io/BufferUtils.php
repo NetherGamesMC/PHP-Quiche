@@ -10,20 +10,18 @@ class BufferUtils{
      * @param Closure $writer function(string $data, int $length, bool $isLast) : int
      */
     public static function tryWrite(QueueReader $reader, Closure $writer) : int{
-        $newData = $reader->shift();
-        while($newData !== null){
-            $data = $newData;
+        $empty = $reader->isEmpty();
+        while(!$empty){
+            [$data, $promise] = $reader->shift();
             $dataLength = strlen($data);
-            $newData = $reader->shift();
-            $written = $writer($data, $dataLength, $newData === null);
+            $written = $writer($data, $dataLength, $empty = $reader->isEmpty());
 
             if($written <= 0){
-                $reader->unshift($data);
-
-                return $written;
+                $reader->unshift($data, $promise);
             }elseif($written !== $dataLength){
-                $reader->unshift(substr($data, $written));
+                $reader->unshift(substr($data, $written), $promise);
             }else{
+                $promise?->success();
                 continue;
             }
 

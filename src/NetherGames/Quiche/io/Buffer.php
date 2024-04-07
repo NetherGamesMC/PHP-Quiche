@@ -3,12 +3,13 @@
 namespace NetherGames\Quiche\io;
 
 use Closure;
+use NetherGames\Quiche\io\promise\PromiseResolver;
 use RuntimeException;
 use SplDoublyLinkedList;
 
 class Buffer{
     private bool $closed = false;
-    /** @var SplDoublyLinkedList<string> */
+    /** @var SplDoublyLinkedList<list{0: string, 1: PromiseResolver|null}> */
     private SplDoublyLinkedList $buffer;
 
     /**
@@ -34,14 +35,20 @@ class Buffer{
 
     public function close() : void{
         $this->closed = true;
+
+        foreach($this->buffer as $item){
+            [$_, $promise] = $item;
+
+            $promise?->failure();
+        }
     }
 
-    public function shift() : ?string{
-        try{
-            return $this->buffer->shift();
-        }catch(RuntimeException){
-            return null;
-        }
+    /**
+     * @caution Throws an exception if shift is called on an empty buffer
+     * @phpstan-return list{0: string, 1: PromiseResolver|null}
+     */
+    public function shift() : array{
+        return $this->buffer->shift();
     }
 
     public function isClosed() : bool{
@@ -52,19 +59,20 @@ class Buffer{
         return $this->buffer->isEmpty();
     }
 
-    public function write(string $str) : void{
+    public function write(string $str, ?PromiseResolver $promiseResolver = null) : void{
         if($this->closed){
+            $promiseResolver?->failure();
             throw new RuntimeException("Buffer is closed");
         }
 
-        $this->buffer->push($str);
+        $this->buffer->push([$str, $promiseResolver]);
 
         if($this->onFirstWrite !== null){
             ($this->onFirstWrite)();
         }
     }
 
-    public function unshift(string $str) : void{
-        $this->buffer->unshift($str);
+    public function unshift(string $str, ?PromiseResolver $promiseResolver) : void{
+        $this->buffer->unshift([$str, $promiseResolver]);
     }
 }

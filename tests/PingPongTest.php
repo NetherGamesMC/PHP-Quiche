@@ -208,20 +208,23 @@ class PingPongTest extends TestCase{
         $streamClosedClient = false;
         $streamClosedServer = false;
         $streamWriterServerDisabled = false;
+        $sendingSucceeded = false;
 
         $server = null;
-        $server = self::createServer(function(QuicheConnection $connection, ?QuicheStream $stream) use (&$server, &$streamClosedServer, &$streamWriterServerDisabled) : void{
+        $server = self::createServer(function(QuicheConnection $connection, ?QuicheStream $stream) use (&$server, &$sendingSucceeded, &$streamClosedServer, &$streamWriterServerDisabled) : void{
             if($stream instanceof BiDirectionalQuicheStream){
                 $writer = $stream->setupWriter();
 
-                $stream->setShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedServer) : void{
+                $stream->setShutdownCallback(function(bool $peerClosed) use ($writer, &$sendingSucceeded, &$streamClosedServer) : void{
                     self::assertTrue(!$peerClosed, "Peer closed should be false on server");
                     $streamClosedServer = self::checkWriter($writer);
                 });
 
-                $stream->setOnDataArrival(function(string $data) use ($writer, &$server, &$streamWriterServerDisabled) : void{
+                $stream->setOnDataArrival(function(string $data) use ($writer, &$server, &$sendingSucceeded, &$streamWriterServerDisabled) : void{
                     self::assertTrue($data === "ping", "Ping should arrive as ping");
-                    $writer->write("pong");
+                    $writer->writeWithPromise("pong")->onResult(function() use (&$sendingSucceeded) : void{
+                        $sendingSucceeded = true;
+                    });
                     $server->close(false, 0, "Bye");
                     $streamWriterServerDisabled = self::checkWriter($writer);
                 });
@@ -262,7 +265,7 @@ class PingPongTest extends TestCase{
             $done = self::checkWriter($writer);
         });
 
-        while(!$done || !$arrival || !$streamClosedClient || !$streamClosedServer || !$streamWriterServerDisabled){
+        while(!$done || !$arrival || !$streamClosedClient || !$streamClosedServer || !$streamWriterServerDisabled || !$sendingSucceeded){
             $client->tick();
             $server->tick();
         }

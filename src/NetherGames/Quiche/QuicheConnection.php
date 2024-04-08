@@ -3,7 +3,6 @@
 namespace NetherGames\Quiche;
 
 use Closure;
-use LogicException;
 use NetherGames\Quiche\bindings\quiche_recv_info_ptr;
 use NetherGames\Quiche\bindings\quiche_send_info_ptr;
 use NetherGames\Quiche\bindings\QuicheFFI;
@@ -26,6 +25,7 @@ use function microtime;
 use function socket_send;
 use function socket_sendto;
 use function strlen;
+use function substr;
 
 class QuicheConnection{
     public const QLOG_FILE_EXTENSION = 'qlog';
@@ -40,9 +40,9 @@ class QuicheConnection{
     /** @var array<int, QuicheStream> */
     private array $streams = [];
 
-    /** @var ?Closure $incomingDgramBuffer function(string $data) : int */
-    private ?Closure $incomingDgramBuffer = null;
-    private ?QueueReader $outgoingDgramBuffer = null;
+    /** @var Closure $incomingDgramBuffer function(string $data) : int */
+    private Closure $incomingDgramBuffer;
+    private QueueReader $outgoingDgramBuffer;
 
     private int $nextUnidirectionalStreamId;
     private int $nextBidirectionalStreamId;
@@ -118,10 +118,8 @@ class QuicheConnection{
     /**
      * @param Closure $incomingBuffer function(string $data) : int
      */
-    public function setDatagramBuffers(Closure $incomingBuffer) : QueueWriter{
-        if(!$this->config->hasDgramEnabled()){
-            throw new LogicException("Datagrams are not enabled");
-        }
+    public function enableDatagrams(Closure $incomingBuffer, int $recvQueueLen, int $sendQueueLen) : QueueWriter{
+        $this->config->enableDgram(true, $recvQueueLen, $sendQueueLen);
 
         [$read, $write] = Buffer::create();
         $this->outgoingDgramBuffer = $read;
@@ -149,7 +147,7 @@ class QuicheConnection{
             return false;
         }
 
-        if($this->bindings->quiche_conn_is_established($this->connection)){
+        if($this->bindings->quiche_conn_is_established($this->connection) || $this->bindings->quiche_conn_is_in_early_data($this->connection)){
             $this->receiveStreams();
             $this->receiveDatagrams();
         }
@@ -236,15 +234,13 @@ class QuicheConnection{
 
         $this->checkTimers();
 
-        if($this->bindings->quiche_conn_is_established($this->connection)){
+        if($this->bindings->quiche_conn_is_established($this->connection) || $this->bindings->quiche_conn_is_in_early_data($this->connection)){
             if($this->isEstablished){
                 while(($streamId = $this->bindings->quiche_conn_stream_writable_next($this->connection)) >= 0){
-                    $stream = ($this->streams[$streamId] ?? null);
+                    $stream = $this->streams[$streamId] ?? null;
 
-                    if($stream !== null){
-                        if(!$stream->handleOutgoing() && $stream->isClosed()){
-                            unset($this->streams[$streamId]);
-                        }
+                    if($stream !== null && !$stream->handleOutgoing() && $stream->isClosed()){
+                        unset($this->streams[$streamId]);
                     }
                 }
             }else{
@@ -258,6 +254,12 @@ class QuicheConnection{
             $this->sendDatagrams();
         }
 
+        $this->send();
+
+        return true;
+    }
+
+    private function send() : void{
         if($this->sendBuffer === null){
             while(0 < ($written = $this->bindings->quiche_conn_send(
                     $this->connection,
@@ -294,8 +296,6 @@ class QuicheConnection{
                 break;
             }
         }
-
-        return true;
     }
 
     public function schedulePing() : void{
@@ -314,14 +314,14 @@ class QuicheConnection{
         if($this->timeoutTime !== null && microtime(true) > $this->timeoutTime){
             $this->timeoutTime = null;
             $this->bindings->quiche_conn_on_timeout($this->connection);
-            $this->handleOutgoing(); // send the timeout packet
+            $this->send(); // send the timeout packet
             $this->scheduleTimeout();
         }
 
         if($this->pingTime !== null && microtime(true) > $this->pingTime){
             $this->pingTime = null;
             $this->ping();
-            $this->handleOutgoing(); // send the ping packet
+            $this->send(); // send the ping packet
             $this->schedulePing();
         }
     }
@@ -331,7 +331,7 @@ class QuicheConnection{
 
         $this->handleOutgoing(); // send the data asap
         $this->bindings->quiche_conn_close($this->connection, (int) $applicationError, $error, $reason, strlen($reason));
-        $this->handleOutgoing(); // send the close packet
+        $this->send(); // send the close packet
 
         foreach($this->streams as $streamId => $stream){
             $stream->onConnectionClose(false);
@@ -371,7 +371,7 @@ class QuicheConnection{
 
     private function receiveStreams() : void{
         while(($streamId = $this->bindings->quiche_conn_stream_readable_next($this->connection)) >= 0){
-            $stream = ($this->streams[$streamId] ?? null);
+            $stream = $this->streams[$streamId] ?? null;
 
             if($stream === null){
                 if($streamId % 4 === 0 || $streamId % 4 === 1){ // Client-Initiated or Server-Initiated Bidirectional
@@ -390,12 +390,8 @@ class QuicheConnection{
     }
 
     private function receiveDatagrams() : void{
-        if(!$this->config->hasDgramEnabled()){
+        if(!isset($this->incomingDgramBuffer)){
             return;
-        }
-
-        if($this->incomingDgramBuffer === null){
-            throw new LogicException("Datagram buffer is not set");
         }
 
         if(($written = $this->bindings->quiche_conn_dgram_recv(
@@ -408,12 +404,8 @@ class QuicheConnection{
     }
 
     private function sendDatagrams() : void{
-        if(!$this->config->hasDgramEnabled()){
+        if(!isset($this->outgoingDgramBuffer)){
             return;
-        }
-
-        if($this->outgoingDgramBuffer === null){
-            throw new LogicException("Datagram buffer is not set");
         }
 
         BufferUtils::tryWrite(

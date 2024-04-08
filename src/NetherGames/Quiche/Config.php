@@ -12,9 +12,8 @@ use function is_dir;
 
 class Config{
     private struct_quiche_config_ptr $config;
-    private int $maxRecvUdpPayloadSize = 65527; // https://docs.quic.tech/src/quiche/lib.rs.html#984
-    private int $maxSendUdpPayloadSize = 1200; // https://docs.quic.tech/src/quiche/lib.rs.html#991
-    private bool $enableDgram = false;
+    private int $maxRecvUdpPayloadSize = 65527; // https://docs.quic.tech/src/quiche/lib.rs.html#1006
+    private int $maxSendUdpPayloadSize = 1200; // https://docs.quic.tech/src/quiche/lib.rs.html#1012
     private int $pingInterval = 0;
     private int $maxIdleTimeout = 0;
 
@@ -296,6 +295,10 @@ class Config{
         return $this;
     }
 
+    /**
+     * @internal This method is used by QuicheConnection directly
+     * @see QuicheConnection::enableDatagrams
+     */
     public function enableDgram(bool $enabled, int $recvQueueLen, int $sendQueueLen) : self{
         if($recvQueueLen < 0){
             throw new InvalidArgumentException("RecvQueueLen must be positive");
@@ -306,13 +309,8 @@ class Config{
         }
 
         $this->bindings->quiche_config_enable_dgram($this->config, (int) $enabled, $recvQueueLen, $sendQueueLen);
-        $this->enableDgram = $enabled;
 
         return $this;
-    }
-
-    public function hasDgramEnabled() : bool{
-        return $this->enableDgram;
     }
 
     public function setMaxConnectionWindow(int $v) : self{

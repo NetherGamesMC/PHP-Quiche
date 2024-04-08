@@ -27,9 +27,9 @@ class Buffer{
     }
 
     /**
-     * @param ?Closure $onFirstWrite function() : void
+     * @param ?Closure $onWrite function() : void
      */
-    private function __construct(private ?Closure $onFirstWrite){
+    private function __construct(private ?Closure $onWrite){
         $this->buffer = new SplDoublyLinkedList();
     }
 
@@ -67,8 +67,8 @@ class Buffer{
 
         $this->buffer->push([$str, $promiseResolver]);
 
-        if($this->onFirstWrite !== null){
-            ($this->onFirstWrite)();
+        if($this->onWrite !== null){
+            ($this->onWrite)();
         }
     }
 

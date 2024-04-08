@@ -42,8 +42,10 @@ trait WriteableQuicheStreamTrait{
             }elseif($return < 0){
                 throw new RuntimeException("Failed to write to stream: " . $return);
             }
-        } elseif ($written === QuicheBindings::QUICHE_ERR_STREAM_STOPPED){
+        }elseif($written === QuicheBindings::QUICHE_ERR_STREAM_STOPPED){
             $this->onShutdownWriting(true);
+
+            return false;
         }
 
         return true;

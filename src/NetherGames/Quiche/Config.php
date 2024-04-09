@@ -16,6 +16,7 @@ class Config{
     private int $maxSendUdpPayloadSize = 1200; // https://docs.quic.tech/src/quiche/lib.rs.html#1012
     private int $pingInterval = 0;
     private int $maxIdleTimeout = 0;
+    private bool $hasActiveMigration = true;
 
     public function __construct(private readonly QuicheFFI $bindings){
         $config = $this->bindings->quiche_config_new(QuicheBinding::QUICHE_PROTOCOL_VERSION);
@@ -252,6 +253,8 @@ class Config{
     }
 
     public function setEnableActiveMigration(bool $v) : self{
+        $this->hasActiveMigration = $v;
+
         $this->bindings->quiche_config_set_disable_active_migration($this->config, (int) !$v);
 
         return $this;
@@ -275,22 +278,6 @@ class Config{
 
     public function setEnableHystart(bool $v) : self{
         $this->bindings->quiche_config_enable_hystart($this->config, (int) $v);
-
-        return $this;
-    }
-
-    public function setEnablePacing(bool $v) : self{
-        $this->bindings->quiche_config_enable_pacing($this->config, (int) $v);
-
-        return $this;
-    }
-
-    public function setMaxPacingRate(int $v) : self{
-        if($v < 0){
-            throw new InvalidArgumentException("MaxPacingRate must be positive");
-        }
-
-        $this->bindings->quiche_config_set_max_pacing_rate($this->config, $v);
 
         return $this;
     }
@@ -355,5 +342,13 @@ class Config{
 
     public function hasKeepAliveEnabled() : bool{
         return $this->pingInterval > 0;
+    }
+
+    public function discoverPMTUD(bool $v): void{
+        $this->bindings->quiche_config_discover_pmtu($this->config, (int) $v);
+    }
+
+    public function hasActiveMigration() : bool{
+        return $this->hasActiveMigration;
     }
 }

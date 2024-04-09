@@ -23,7 +23,7 @@ class ReadableQuicheStream extends QuicheStream{
         parent::__construct($bindings, $id, $connection);
     }
 
-    public function handleOutgoing() : bool{
+    public function handleOutgoing() : void{
         throw new RuntimeException("Cannot handle outgoing data on a readable stream");
     }
 

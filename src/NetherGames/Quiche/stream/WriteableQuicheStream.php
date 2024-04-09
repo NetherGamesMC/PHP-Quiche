@@ -30,7 +30,7 @@ class WriteableQuicheStream extends QuicheStream{
         return !$this->isWritable();
     }
 
-    public function handleIncoming() : bool{
+    public function handleIncoming() : void{
         throw new BadMethodCallException("Cannot handle incoming data on a writeable stream");
     }
 }

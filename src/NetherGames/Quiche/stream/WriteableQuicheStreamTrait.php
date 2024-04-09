@@ -13,16 +13,16 @@ use RuntimeException;
 
 trait WriteableQuicheStreamTrait{
     private int $priority = 127; // https://github.com/cloudflare/quiche/blob/master/quiche/src/stream/mod.rs#L45
-    /** @var ?Closure $writeClosure function(string $data, int $length) : int */
+    /** @var ?Closure function(string $data, int $length) : int */
     private ?Closure $writeClosure = null;
-    /** @var ?Closure function(bool $peerClosed) : void */
-    private ?Closure $onShutdownWriting = null;
+    /** @var Closure[] function(bool $peerClosed) : void */
+    private array $onShutdownWriting = [];
 
     private QueueReader $reader;
     private bool $shouldShutdownWriting = false;
     private bool $writable = true;
 
-    public function handleOutgoing() : bool{
+    public function handleOutgoing() : void{
         $written = BufferUtils::tryWrite(
             $this->reader,
             $this->writeClosure ??= function(string $data, int $length, bool $isLast) : int{
@@ -34,31 +34,19 @@ trait WriteableQuicheStreamTrait{
             }
         );
 
-        if($written === QuicheBindings::QUICHE_ERR_DONE){
-            if(($return = $this->bindings->quiche_conn_stream_writable($this->connection, $this->id, 0)) === QuicheBindings::QUICHE_ERR_INVALID_STREAM_STATE){
-                $this->onShutdownWriting(true); // only way of checking STOP_SENDING :( : https://github.com/cloudflare/quiche/issues/1299
-
-                return false;
-            }elseif($return < 0){
-                throw new RuntimeException("Failed to write to stream: " . $return);
-            }
-        }elseif($written === QuicheBindings::QUICHE_ERR_STREAM_STOPPED){
+        if($written === QuicheBindings::QUICHE_ERR_STREAM_STOPPED){
             $this->onShutdownWriting(true);
-
-            return false;
         }
-
-        return true;
     }
 
     /**
      * @CAUTION if peerClosed, this method will only get called whenever you try to write to the stream and the stream is not writable
      * https://github.com/cloudflare/quiche/issues/1299
      *
-     * @param ?Closure $onShutdownWriting (bool $peerClosed)
+     * @param Closure $onShutdownWriting (bool $peerClosed)
      */
-    public function setShutdownWritingCallback(?Closure $onShutdownWriting) : void{
-        $this->onShutdownWriting = $onShutdownWriting;
+    public function addShutdownWritingCallback(Closure $onShutdownWriting) : void{
+        $this->onShutdownWriting[] = $onShutdownWriting;
     }
 
     public function setupWriter() : QueueWriter{
@@ -88,8 +76,8 @@ trait WriteableQuicheStreamTrait{
         $this->writable = false;
         $this->reader->close();
 
-        if($this->onShutdownWriting !== null){
-            ($this->onShutdownWriting)($peerClosed);
+        foreach($this->onShutdownWriting as $onShutdownWriting){
+            $onShutdownWriting($peerClosed);
         }
 
         $this->onPartialClose($peerClosed);

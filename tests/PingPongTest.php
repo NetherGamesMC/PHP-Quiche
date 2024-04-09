@@ -4,6 +4,8 @@ namespace tests;
 
 use Closure;
 use NetherGames\Quiche\Config;
+use NetherGames\Quiche\event\Event;
+use NetherGames\Quiche\event\ValidatedPathEvent;
 use NetherGames\Quiche\io\QueueWriter;
 use NetherGames\Quiche\QuicheConnection;
 use NetherGames\Quiche\socket\QuicheClientSocket;
@@ -24,6 +26,7 @@ class PingPongTest extends TestCase{
         return new QuicheServerSocket(
             [
                 new SocketAddress("127.0.0.1", 19133),
+                new SocketAddress("127.0.0.1", 19134),
             ],
             $closure
         );
@@ -40,6 +43,7 @@ class PingPongTest extends TestCase{
     }
 
     private static function configureBaseSocket(Config $socketConfig) : void{
+        $socketConfig->discoverPMTUD(true);
         $socketConfig->enableBidirectionalStreams();
         $socketConfig->setApplicationProtos(["pingpong"]);
         $socketConfig->setInitialMaxData(10000000);
@@ -79,7 +83,7 @@ class PingPongTest extends TestCase{
             if($stream instanceof BiDirectionalQuicheStream){
                 $writer = $stream->setupWriter();
 
-                $stream->setShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedServer) : void{
+                $stream->addShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedServer) : void{
                     self::assertTrue(!$peerClosed, "Peer closed should be false on server");
                     $streamClosedServer = self::checkWriter($writer);
                 });
@@ -107,12 +111,12 @@ class PingPongTest extends TestCase{
         $client->connect();
         $clientConnection = $client->getConnection();
         $clientConnection->setKeylogFilePath(__DIR__ . "/client-keylog.txt");
-        $clientConnection->setQLogPath(__DIR__, "client", "qlog", "client");
+        $qlogFilePath = $clientConnection->setQLogPath(__DIR__, "client", "qlog", "client");
         $stream = $clientConnection->openBidirectionalStream();
         $writer = $stream->setupWriter();
         $writer->write("ping");
 
-        $stream->setShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedClient) : void{
+        $stream->addShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedClient) : void{
             self::assertTrue($peerClosed, "Peer closed should be false on server");
             $streamClosedClient = self::checkWriter($writer);
         });
@@ -134,6 +138,18 @@ class PingPongTest extends TestCase{
             $server->tick();
         }
 
+        if(is_file(__DIR__ . "/client-keylog.txt")){
+            unlink(__DIR__ . "/client-keylog.txt");
+        }else{
+            self::fail("Keylog file should exist");
+        }
+
+        if(is_file($qlogFilePath)){
+            unlink($qlogFilePath);
+        }else{
+            self::fail("QLog file should exist");
+        }
+
         $server->close(false, 0, "Bye");
     }
 
@@ -147,7 +163,7 @@ class PingPongTest extends TestCase{
             if($stream instanceof BiDirectionalQuicheStream){
                 $writer = $stream->setupWriter();
 
-                $stream->setShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedServer) : void{
+                $stream->addShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedServer) : void{
                     self::assertTrue(!$peerClosed, "Peer closed should be false on server");
                     $streamClosedServer = self::checkWriter($writer);
                 });
@@ -179,7 +195,7 @@ class PingPongTest extends TestCase{
         $writer = $stream->setupWriter();
         $writer->write("ping");
 
-        $stream->setShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedClient) : void{
+        $stream->addShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedClient) : void{
             self::assertTrue($peerClosed, "Peer closed should be false on server");
             $streamClosedClient = self::checkWriter($writer);
         });
@@ -215,7 +231,7 @@ class PingPongTest extends TestCase{
             if($stream instanceof BiDirectionalQuicheStream){
                 $writer = $stream->setupWriter();
 
-                $stream->setShutdownCallback(function(bool $peerClosed) use ($writer, &$sendingSucceeded, &$streamClosedServer) : void{
+                $stream->addShutdownCallback(function(bool $peerClosed) use ($writer, &$sendingSucceeded, &$streamClosedServer) : void{
                     self::assertTrue(!$peerClosed, "Peer closed should be false on server");
                     $streamClosedServer = self::checkWriter($writer);
                 });
@@ -248,7 +264,7 @@ class PingPongTest extends TestCase{
         $writer = $stream->setupWriter();
         $writer->write("ping");
 
-        $stream->setShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedClient) : void{
+        $stream->addShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedClient) : void{
             self::assertTrue($peerClosed, "Peer closed should be false on server");
             $streamClosedClient = self::checkWriter($writer);
         });
@@ -268,6 +284,183 @@ class PingPongTest extends TestCase{
         while(!$done || !$arrival || !$streamClosedClient || !$streamClosedServer || !$streamWriterServerDisabled || !$sendingSucceeded){
             $client->tick();
             $server->tick();
+        }
+
+        $server->close(false, 0, "Bye");
+    }
+
+    public function testClientMigration() : void{
+        $done = false;
+        $arrival = false;
+        $streamClosedClient = false;
+        $streamClosedServer = false;
+        $streamWriterServerDisabled = false;
+        $sendingSucceeded = false;
+        $pongsCounted = 0;
+        $serverConnection = null;
+
+        $server = null;
+        $server = self::createServer(function(QuicheConnection $connection, ?QuicheStream $stream) use (&$server, &$serverConnection, &$sendingSucceeded, &$pongsCounted, &$streamClosedServer, &$streamWriterServerDisabled) : void{
+            if($stream instanceof BiDirectionalQuicheStream){
+                $writer = $stream->setupWriter();
+
+                $stream->addShutdownCallback(function(bool $peerClosed) use ($writer, &$sendingSucceeded, &$pongsCounted, &$streamClosedServer) : void{
+                    self::assertTrue(!$peerClosed, "Peer closed should be false on server");
+                    $streamClosedServer = self::checkWriter($writer);
+                });
+
+                $stream->setOnDataArrival(function(string $data) use ($writer, &$server, &$sendingSucceeded, &$pongsCounted, &$streamWriterServerDisabled) : void{
+                    self::assertTrue($data === "ping", "Ping should arrive as ping");
+
+                    $pongsCounted++;
+                    $writer->writeWithPromise("pong")->onResult(function() use (&$sendingSucceeded) : void{
+                        $sendingSucceeded = true;
+                    });
+
+                    if($pongsCounted === 30){
+                        $server->close(false, 0, "Bye");
+                        $streamWriterServerDisabled = self::checkWriter($writer);
+                    }
+                });
+            }else if($stream === null){
+                $serverConnection = $connection;
+                $connection->setPeerCloseCallback(function(bool $applicationError, int $error, ?string $reason) : void{
+                    self::fail("Server should not receive a shutdown callback");
+                });
+            }
+        });
+
+        $client = self::createClient(function(QuicheConnection $connection, QuicheStream $stream) : void{
+            self::fail("Client should not receive a stream");
+        });
+
+        self::configureClient($client);
+        self::configureServer($server);
+
+        $client->connect();
+        $clientConnection = $client->getConnection();
+        $clientConnection->registerEventHandler(function(Event $event) : void{
+            if($event instanceof ValidatedPathEvent){
+                $event->migrate();
+            }
+        });
+        $stream = $clientConnection->openBidirectionalStream();
+        $writer = $stream->setupWriter();
+        $writer->write("ping");
+
+        $stream->addShutdownCallback(function(bool $peerClosed) use ($clientConnection, $writer, &$streamClosedClient) : void{
+            self::assertTrue($peerClosed, "Peer closed should be false on server");
+            $streamClosedClient = self::checkWriter($writer);
+        });
+
+        $stream->setOnDataArrival(function(string $data) use ($clientConnection, $writer, &$arrival) : void{
+            self::assertTrue($data === "pong", "Pong should arrive as pong");
+            if(!$arrival){
+                $clientConnection->probePath(to: new SocketAddress("127.0.0.1", 19134));
+            }
+            $writer->write("ping");
+            $arrival = true;
+        });
+
+        $clientConnection->setPeerCloseCallback(function(bool $applicationError, int $error, ?string $reason) use (&$done, $writer) : void{
+            self::assertTrue($applicationError === false, "Application error should be false");
+            self::assertTrue($error === 0, "Error should be 0");
+            self::assertTrue($reason === "Bye", "Reason should be Bye");
+            $done = self::checkWriter($writer);
+        });
+
+        while(!$done || !$arrival || !$streamClosedClient || !$streamClosedServer || !$streamWriterServerDisabled || !$sendingSucceeded){
+            $client->tick();
+            $server->tick();
+        }
+
+        self::assertTrue($serverConnection->getLocalAddress()->getPort() === 19134, "Port should be 19134");
+        self::assertTrue($clientConnection->getPeerAddress()->getPort() === 19134, "Port should be 19134");
+
+        $server->close(false, 0, "Bye");
+    }
+
+    public function testSessionResumption() : void{
+        $arrival = false;
+        $arrivalResumption = false;
+        $clientClosed = false;
+        $sendingSucceeded = false;
+        $resumedSession = false;
+        $newClient = null;
+
+        $server = self::createServer(function(QuicheConnection $connection, ?QuicheStream $stream) use (&$server, &$resumedSession, &$sendingSucceeded) : void{
+            if($stream instanceof BiDirectionalQuicheStream){
+                $writer = $stream->setupWriter();
+
+                $stream->setOnDataArrival(function(string $data) use ($writer, $connection, &$server, &$resumedSession, &$sendingSucceeded) : void{
+                    self::assertTrue($data === "ping", "Ping should arrive as ping");
+
+                    if($resumedSession){
+                        $writer->writeWithPromise("pong")->onResult(function() use ($connection, &$sendingSucceeded) : void{
+                            $connection->close(false, 0, "Bye");
+                            $sendingSucceeded = true;
+                        });
+                    }else{
+                        $writer->writeWithPromise("pong")->onResult(function() use ($connection, &$resumedSession) : void{
+                            $resumedSession = true;
+                            $connection->close(false, 0, "Bye");
+                        });
+                    }
+                });
+            }
+        });
+
+        $client = self::createClient(function(QuicheConnection $connection, QuicheStream $stream) : void{
+            self::fail("Client should not receive a stream");
+        });
+
+        self::configureClient($client);
+        self::configureServer($server);
+
+        $client->connect();
+        $clientConnection = $client->getConnection();
+        $stream = $clientConnection->openBidirectionalStream();
+        $writer = $stream->setupWriter();
+        $writer->write("ping");
+
+        $stream->setOnDataArrival(function(string $data) use (&$arrival) : void{
+            self::assertTrue($data === "pong", "Pong should arrive as pong");
+            $arrival = true;
+        });
+
+        $clientConnection->setPeerCloseCallback(function(bool $applicationError, int $error, ?string $reason) use ($client, &$arrivalResumption, &$newClient, &$clientClosed, $clientConnection) : void{
+            $newClient = self::createClient(function(QuicheConnection $connection, QuicheStream $stream) : void{
+                self::fail("Client should not receive a stream");
+            });
+
+            self::configureClient($newClient);
+
+            $newClient->connect($clientConnection->getSession());
+
+            $newClientConnection = $newClient->getConnection();
+            $newClientConnection->setQLogPath(__DIR__, "client", "qlog", "client");
+            $newClientConnection->setPeerCloseCallback(function(bool $applicationError, int $error, ?string $reason) use (&$clientClosed) : void{
+                self::assertTrue($applicationError === false, "Application error should be false");
+                self::assertTrue($error === 0, "Error should be 0");
+                self::assertTrue($reason === "Bye", "Reason should be Bye");
+                $clientClosed = true;
+            });
+
+            $stream = $newClientConnection->openBidirectionalStream();
+            $writer = $stream->setupWriter();
+            $writer->write("ping");
+
+            $stream->setOnDataArrival(function(string $data) use ($writer, &$arrivalResumption) : void{
+                self::assertTrue($data === "pong", "Pong should arrive as pong");
+                $writer->write("ping");
+                $arrivalResumption = true;
+            });
+        });
+
+        while(!$arrival || !$sendingSucceeded || !$arrivalResumption || !$clientClosed){
+            $client->tick();
+            $server->tick();
+            $newClient?->tick();
         }
 
         $server->close(false, 0, "Bye");

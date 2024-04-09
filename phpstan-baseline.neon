@@ -1,9 +1,54 @@
 parameters:
 	ignoreErrors:
 		-
-			message: "#^Binary operation \"\\+\" between FFI\\\\CData and int\\<1, max\\> results in an error\\.$#"
+			message: "#^Call to static method array\\(\\) on an unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
 			count: 1
 			path: src/NetherGames/Quiche/Config.php
+
+		-
+			message: "#^Cannot call method getData\\(\\) on array\\<int, int\\>\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/Config.php
+
+		-
+			message: "#^Parameter \\#1 \\$to of static method FFI\\:\\:memcpy\\(\\) expects FFI\\\\CData, \\(float\\|int\\) given\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/Config.php
+
+		-
+			message: "#^Call to method toString\\(\\) on an unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
+			count: 2
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Comparison operation \"\\>\" between NetherGames\\\\Quiche\\\\bindings\\\\struct_quiche_path_event_ptr\\|null and 0 results in an error\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^PHPDoc tag @var for variable \\$out contains unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Parameter \\#1 \\$socketAddress of static method NetherGames\\\\Quiche\\\\SocketAddress\\:\\:createFromFFI\\(\\) expects NetherGames\\\\Quiche\\\\bindings\\\\struct_sockaddr_storage, NetherGames\\\\Quiche\\\\bindings\\\\struct_sockaddr_ptr given\\.$#"
+			count: 10
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Parameter \\#5 \\$retire_if_needed of method NetherGames\\\\Quiche\\\\bindings\\\\QuicheFFI\\:\\:quiche_conn_new_scid\\(\\) expects int, false given\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Parameter \\$tempBuffer of method NetherGames\\\\Quiche\\\\QuicheConnection\\:\\:__construct\\(\\) has invalid type NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Property NetherGames\\\\Quiche\\\\QuicheConnection\\:\\:\\$tempBuffer has unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr as its type\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/QuicheConnection.php
 
 		-
 			message: "#^Undefined variable\\: \\$code$#"
@@ -11,8 +56,68 @@ parameters:
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
 		-
+			message: "#^Undefined variable\\: \\$from$#"
+			count: 2
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Undefined variable\\: \\$fromLength$#"
+			count: 1
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Undefined variable\\: \\$id$#"
+			count: 4
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Undefined variable\\: \\$idLength$#"
+			count: 2
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
 			message: "#^Undefined variable\\: \\$isApp$#"
 			count: 2
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Undefined variable\\: \\$localLength$#"
+			count: 5
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Undefined variable\\: \\$oldLocal$#"
+			count: 2
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Undefined variable\\: \\$oldLocalLength$#"
+			count: 1
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Undefined variable\\: \\$oldPeer$#"
+			count: 2
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Undefined variable\\: \\$oldPeerLength$#"
+			count: 1
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Undefined variable\\: \\$out$#"
+			count: 2
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Undefined variable\\: \\$outLength$#"
+			count: 2
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Undefined variable\\: \\$peerLength$#"
+			count: 5
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
 		-
@@ -26,6 +131,21 @@ parameters:
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
 		-
+			message: "#^Undefined variable\\: \\$seq$#"
+			count: 4
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Undefined variable\\: \\$to$#"
+			count: 2
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Undefined variable\\: \\$toLength$#"
+			count: 1
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
 			message: "#^Undefined variable\\: \\$traceId$#"
 			count: 2
 			path: src/NetherGames/Quiche/QuicheConnection.php
@@ -36,9 +156,54 @@ parameters:
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
 		-
+			message: "#^Variable \\$local might not be defined\\.$#"
+			count: 10
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Variable \\$out in PHPDoc tag @var does not exist\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Variable \\$peer might not be defined\\.$#"
+			count: 10
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Call to static method castFrom\\(\\) on an unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/SocketAddress.php
+
+		-
 			message: "#^Parameter \\#2 \\$from of static method FFI\\:\\:memcpy\\(\\) expects FFI\\\\CData\\|string, string\\|false given\\.$#"
 			count: 2
 			path: src/NetherGames/Quiche/SocketAddress.php
+
+		-
+			message: "#^Call to method toString\\(\\) on an unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
+			count: 5
+			path: src/NetherGames/Quiche/socket/QuicheServerSocket.php
+
+		-
+			message: "#^Call to static method array\\(\\) on an unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
+			count: 3
+			path: src/NetherGames/Quiche/socket/QuicheServerSocket.php
+
+		-
+			message: "#^Parameter \\$dcid of method NetherGames\\\\Quiche\\\\socket\\\\QuicheServerSocket\\:\\:createConnection\\(\\) has invalid type NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/socket/QuicheServerSocket.php
+
+		-
+			message: "#^Parameter \\$scid of method NetherGames\\\\Quiche\\\\socket\\\\QuicheServerSocket\\:\\:createConnection\\(\\) has invalid type NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/socket/QuicheServerSocket.php
+
+		-
+			message: "#^Parameter \\$token of method NetherGames\\\\Quiche\\\\socket\\\\QuicheServerSocket\\:\\:createConnection\\(\\) has invalid type NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/socket/QuicheServerSocket.php
 
 		-
 			message: "#^Undefined variable\\: \\$type$#"
@@ -53,6 +218,16 @@ parameters:
 		-
 			message: "#^Call to an undefined method FFI\\:\\:quiche_enable_debug_logging\\(\\)\\.$#"
 			count: 1
+			path: src/NetherGames/Quiche/socket/QuicheSocket.php
+
+		-
+			message: "#^Call to static method array\\(\\) on an unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/socket/QuicheSocket.php
+
+		-
+			message: "#^Property NetherGames\\\\Quiche\\\\socket\\\\QuicheSocket\\:\\:\\$tempBuffer has unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr as its type\\.$#"
+			count: 2
 			path: src/NetherGames/Quiche/socket/QuicheSocket.php
 
 		-
@@ -76,9 +251,39 @@ parameters:
 			path: src/NetherGames/Quiche/stats/QuicheStats.php
 
 		-
+			message: "#^Call to method toString\\(\\) on an unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/stream/BiDirectionalQuicheStream.php
+
+		-
+			message: "#^Parameter \\$tempBuffer of method NetherGames\\\\Quiche\\\\stream\\\\BiDirectionalQuicheStream\\:\\:__construct\\(\\) has invalid type NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/stream/BiDirectionalQuicheStream.php
+
+		-
+			message: "#^Property NetherGames\\\\Quiche\\\\stream\\\\BiDirectionalQuicheStream\\:\\:\\$tempBuffer has unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr as its type\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/stream/BiDirectionalQuicheStream.php
+
+		-
 			message: "#^Undefined variable\\: \\$fin$#"
 			count: 2
 			path: src/NetherGames/Quiche/stream/BiDirectionalQuicheStream.php
+
+		-
+			message: "#^Call to method toString\\(\\) on an unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/stream/ReadableQuicheStream.php
+
+		-
+			message: "#^Parameter \\$tempBuffer of method NetherGames\\\\Quiche\\\\stream\\\\ReadableQuicheStream\\:\\:__construct\\(\\) has invalid type NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/stream/ReadableQuicheStream.php
+
+		-
+			message: "#^Property NetherGames\\\\Quiche\\\\stream\\\\ReadableQuicheStream\\:\\:\\$tempBuffer has unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr as its type\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/stream/ReadableQuicheStream.php
 
 		-
 			message: "#^Undefined variable\\: \\$fin$#"

@@ -5,23 +5,20 @@ namespace NetherGames\Quiche\socket;
 use Closure;
 use LogicException;
 use NetherGames\Quiche\bindings\Quiche as QuicheBindings;
-use NetherGames\Quiche\bindings\quiche_recv_info_ptr;
-use NetherGames\Quiche\bindings\struct_sockaddr_ptr;
 use NetherGames\Quiche\QuicheConnection;
 use NetherGames\Quiche\SocketAddress;
 use RuntimeException;
 use Socket;
 use function random_bytes;
-use function socket_getsockname;
-use function socket_last_error;
+use function socket_bind;
 use function spl_object_id;
+use function strlen;
+use const AF_INET;
 
 class QuicheClientSocket extends QuicheSocket{
 
     private Socket $socket;
     private ?QuicheConnection $connection = null;
-    private SocketAddress $localAddress;
-    private quiche_recv_info_ptr $recvInfo;
 
     /**
      * @param Closure $acceptCallback function(QuicheConnection $connection, QuicheStream $stream) : void
@@ -33,9 +30,8 @@ class QuicheClientSocket extends QuicheSocket{
     ){
         parent::__construct($acceptCallback, $enableDebugLogging);
 
-        $socket = socket_create(AF_INET, SOCK_DGRAM, SOL_UDP);
-
-        if($socket === false || !socket_connect($socket, $peerAddress->getAddress(), $peerAddress->getPort())){
+        $socket = socket_create($family = $this->peerAddress->getSocketFamily(), SOCK_DGRAM, SOL_UDP);
+        if($socket === false || !socket_bind($socket, $family === AF_INET ? "0.0.0.0" : "::")){
             $errno = socket_last_error();
             $errstr = socket_strerror($errno);
             throw new RuntimeException("Failed to create socket: $errstr ($errno)");
@@ -45,15 +41,9 @@ class QuicheClientSocket extends QuicheSocket{
 
         $this->socket = $socket;
 
-        if(socket_getsockname($socket, $localAddress, $localPort) === false){
-            throw new RuntimeException("Failed to get local address");
-        }
-
-        $this->localAddress = new SocketAddress($localAddress, $localPort);
-
         $this->registerSocket($socket, function() : void{
             if(!$this->readSocket()){
-                $this->connection = null;
+                $this->onClosed();
             }
         });
     }
@@ -61,7 +51,7 @@ class QuicheClientSocket extends QuicheSocket{
     protected function handleOutgoing() : void{
         if($this->connection !== null){
             if($this->connection->isClosed() || !$this->connection->handleOutgoing()){
-                $this->connection = null;
+                $this->onClosed();
             }
         }
     }
@@ -69,21 +59,21 @@ class QuicheClientSocket extends QuicheSocket{
     /**
      * Can also be used to reconnect
      */
-    public function connect() : QuicheConnection{
-        $recvInfo = quiche_recv_info_ptr::array();
-        $recvInfo->from = struct_sockaddr_ptr::castFrom($localSockAddress = $this->localAddress->getSocketAddressFFI());
-        $recvInfo->from_len = QuicheBindings::sizeof($localSockAddress[0]);
-        $recvInfo->to = struct_sockaddr_ptr::castFrom($peerSockAddress = $this->peerAddress->getSocketAddressFFI());
-        $recvInfo->to_len = QuicheBindings::sizeof($peerSockAddress[0]);
+    public function connect(string $session = null) : QuicheConnection{
+        if($this->connection !== null){
+            throw new LogicException("Already connected");
+        }
+
+        $info = SocketAddress::createRevcInfo($localAddress = $this->getLocalAddress($this->socket), $this->peerAddress);
 
         $connection = $this->bindings->quiche_connect(
-            $this->peerAddress->getSocketAddress(),
-            random_bytes(self::LOCAL_CONN_ID_LEN),
-            self::LOCAL_CONN_ID_LEN,
-            $recvInfo->to,
-            $recvInfo->to_len,
-            $recvInfo->from,
-            $recvInfo->to_len,
+            $this->peerAddress->getHostname(),
+            random_bytes($scidLength = QuicheBindings::QUICHE_MAX_CONN_ID_LEN),
+            $scidLength,
+            $info->from,
+            $info->from_len,
+            $info->to,
+            $info->to_len,
             $this->config->getBinding(),
         );
 
@@ -91,7 +81,9 @@ class QuicheClientSocket extends QuicheSocket{
             throw new RuntimeException("Failed to create connection");
         }
 
-        $this->recvInfo = $recvInfo;
+        if($session !== null && ($error = $this->bindings->quiche_conn_set_session($connection, $session, strlen($session))) !== 0){
+            throw new RuntimeException("Failed to set session: $error");
+        }
 
         return $this->connection = new QuicheConnection(
             $this->bindings,
@@ -100,6 +92,7 @@ class QuicheClientSocket extends QuicheSocket{
             $this->config,
             $connection,
             $this->acceptCallback,
+            $this->getLocalAddress($this->socket),
             $this->peerAddress,
             spl_object_id($this->socket)
         );
@@ -117,8 +110,8 @@ class QuicheClientSocket extends QuicheSocket{
      * @return bool whether the connection is still alive
      */
     private function readSocket() : bool{
-        while(($length = socket_recv($this->socket, $buffer, $this->config->getMaxRecvUdpPayloadSize(), MSG_DONTWAIT)) !== false){
-            if(!$this->connection?->handleIncoming($buffer, $length, $this->recvInfo)){
+        while(($length = socket_recvfrom($this->socket, $buffer, $this->config->getMaxRecvUdpPayloadSize(), MSG_DONTWAIT, $peerAddr, $peerPort)) !== false){
+            if(!$this->connection?->handleIncoming($buffer, $length, $this->getLocalAddress($this->socket), new SocketAddress($peerAddr, $peerPort))){
                 return false;
             }
         }
@@ -148,5 +141,13 @@ class QuicheClientSocket extends QuicheSocket{
                 $this->connection?->handleOutgoing();
             }
         });
+    }
+
+    public function addSCID(string $scid, QuicheConnection $connection) : void{
+        // do nothing
+    }
+
+    public function removeSCID(string $scid) : void{
+        // do nothing
     }
 }

@@ -22,14 +22,34 @@ use const STREAM_PF_INET;
 use const STREAM_PF_INET6;
 
 class SocketAddress{
-    private struct_sockaddr_in_ptr|struct_sockaddr_in6_ptr $socketAddress;
+    private struct_sockaddr_ptr $socketAddressPtr;
+    private struct_sockaddr_in_ptr|struct_sockaddr_in6_ptr $socketAddressInPtr;
+    private string $hostname;
 
-    public function __construct(private readonly string $address, private readonly int $port){
-        if(!str_contains($this->address, ":")){
-            $this->socketAddress = $this->getQuicheIPv4SocketAddress();
+    public function __construct(private string $address, private readonly int $port){
+        // check if it's a domain name
+        if(filter_var($this->address, FILTER_VALIDATE_IP) === false){
+            $this->hostname = $this->address;
+            $this->address = gethostbyname($this->address);
         }else{
-            $this->socketAddress = $this->getQuicheIPv6SocketAddress();
+            $this->hostname = $this->address;
         }
+
+        if(!str_contains($this->address, ":")){
+            $this->socketAddressInPtr = $this->getQuicheIPv4SocketAddress();
+        }else{
+            $this->socketAddressInPtr = $this->getQuicheIPv6SocketAddress();
+        }
+
+        $this->socketAddressPtr = struct_sockaddr_ptr::castFrom($this->socketAddressInPtr);
+    }
+
+    public function getHostname() : string{
+        return $this->hostname;
+    }
+
+    public function getSocketFamily() : int{
+        return $this->socketAddressPtr->sa_family;
     }
 
     public function getAddress() : string{
@@ -44,8 +64,8 @@ class SocketAddress{
         return "{$this->address}:{$this->port}";
     }
 
-    public function getSocketAddressFFI() : struct_sockaddr_in6_ptr|struct_sockaddr_in_ptr{
-        return $this->socketAddress;
+    public function getSocketAddressPtr() : struct_sockaddr_ptr{
+        return $this->socketAddressPtr;
     }
 
     private function getQuicheIPv4SocketAddress() : struct_sockaddr_in_ptr{
@@ -68,9 +88,9 @@ class SocketAddress{
 
     public static function createRevcInfo(self $from, self $to) : quiche_recv_info_ptr{
         $recvInfo = quiche_recv_info_ptr::array();
-        $recvInfo->from = struct_sockaddr_ptr::castFrom($fromAddr = $from->getSocketAddressFFI());
+        $recvInfo->from = $fromAddr = $from->getSocketAddressPtr();
         $recvInfo->from_len = QuicheBindings::sizeof($fromAddr[0]);
-        $recvInfo->to = struct_sockaddr_ptr::castFrom($toAddr = $to->getSocketAddressFFI());
+        $recvInfo->to = $toAddr = $to->getSocketAddressPtr();
         $recvInfo->to_len = QuicheBindings::sizeof($toAddr[0]);
 
         return $recvInfo;
@@ -94,8 +114,7 @@ class SocketAddress{
         return new self($address, (($port & 0xFF) << 8) | ($port >> 8)); // convert to little endian
     }
 
-
-    public function equals(string $localAddress, int $localPort) : bool{
-        return $this->address === $localAddress && $this->port === $localPort;
+    public function equals(self $socketAddress) : bool{
+        return $this->address === $socketAddress->getAddress() && $this->port === $socketAddress->getPort();
     }
 }

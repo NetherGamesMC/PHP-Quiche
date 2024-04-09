@@ -4,7 +4,6 @@ namespace NetherGames\Quiche\socket;
 
 use Closure;
 use NetherGames\Quiche\bindings\Quiche as QuicheBindings;
-use NetherGames\Quiche\bindings\struct_sockaddr_ptr;
 use NetherGames\Quiche\bindings\uint8_t_ptr;
 use NetherGames\Quiche\Config;
 use NetherGames\Quiche\QuicheConnection;
@@ -53,6 +52,14 @@ class QuicheServerSocket extends QuicheSocket{
         }
     }
 
+    public function addSCID(string $scid, QuicheConnection $connection) : void{
+        $this->connections[$scid] = $connection;
+    }
+
+    public function removeSCID(string $scid) : void{
+        unset($this->connections[$scid]);
+    }
+
     private function readSocket(int $socketId, Socket $socket) : void{
         while(($bufferLength = socket_recvfrom($socket, $buffer, $this->config->getMaxRecvUdpPayloadSize(), MSG_DONTWAIT, $peerAddr, $peerPort)) !== false){
             $scid = uint8_t_ptr::array($scidLength = QuicheBindings::QUICHE_MAX_CONN_ID_LEN);
@@ -62,7 +69,7 @@ class QuicheServerSocket extends QuicheSocket{
             $success = $this->bindings->quiche_header_info(
                 $buffer,
                 $bufferLength,
-                self::LOCAL_CONN_ID_LEN,
+                QuicheBindings::QUICHE_MAX_CONN_ID_LEN,
                 [&$version],
                 [&$type],
                 $scid,
@@ -97,7 +104,8 @@ class QuicheServerSocket extends QuicheSocket{
             if(!$connection?->handleIncoming(
                 $buffer,
                 $bufferLength,
-                SocketAddress::createRevcInfo($peerAddress, $this->udpSocketAddresses[$socketId])
+                $this->udpSocketAddresses[$socketId],
+                $peerAddress
             )){
                 $this->removeConnection($dcidString);
 
@@ -143,15 +151,14 @@ class QuicheServerSocket extends QuicheSocket{
                 $scidLength,
                 $dcid,
                 $dcidLength,
-                random_bytes(self::LOCAL_CONN_ID_LEN),
-                self::LOCAL_CONN_ID_LEN,
+                random_bytes($scidLength = QuicheBindings::QUICHE_MAX_CONN_ID_LEN),
+                $scidLength,
                 $mintToken,
                 strlen($mintToken),
                 $version,
                 $this->tempBuffer,
                 $this->config->getMaxSendUdpPayloadSize()
             );
-
 
             socket_sendto($socket, $this->tempBuffer->toString($written), $written, 0, $peerAddr->getAddress(), $peerAddr->getPort());
 
@@ -162,16 +169,16 @@ class QuicheServerSocket extends QuicheSocket{
             return null; // invalid token
         }
 
-        $localAddr = $this->udpSocketAddresses[$socketId]->getSocketAddressFFI();
+        $localAddr = $this->udpSocketAddresses[$socketId]->getSocketAddressPtr();
         $originalDcid = substr($token->toString($tokenLength), strlen($tokenPrefix));
         $connection = $this->bindings->quiche_accept(
             $dcid,
             $dcidLength,
             $originalDcid,
             strlen($originalDcid),
-            struct_sockaddr_ptr::castFrom($localAddr),
+            $localAddr,
             QuicheBindings::sizeof($localAddr[0]),
-            struct_sockaddr_ptr::castFrom($peerQuicheAddr = $peerAddr->getSocketAddressFFI()),
+            $peerQuicheAddr = $peerAddr->getSocketAddressPtr(),
             QuicheBindings::sizeof($peerQuicheAddr[0]),
             $this->config->getBinding(),
         );
@@ -187,6 +194,7 @@ class QuicheServerSocket extends QuicheSocket{
             $this->config,
             $connection,
             $this->acceptCallback,
+            $this->getLocalAddress($socket),
             $peerAddr,
             $socketId
         );
@@ -202,7 +210,7 @@ class QuicheServerSocket extends QuicheSocket{
      */
     private function registerUDPSockets(array $address) : void{
         foreach($address as $socketAddress){
-            $socket = socket_create(STREAM_PF_INET, STREAM_SOCK_DGRAM, SOL_UDP);
+            $socket = socket_create($socketAddress->getSocketFamily(), SOCK_DGRAM, SOL_UDP);
 
             if($socket === false || !socket_bind($socket, $socketAddress->getAddress(), $socketAddress->getPort())){
                 $errno = socket_last_error();

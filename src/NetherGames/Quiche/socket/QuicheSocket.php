@@ -10,13 +10,15 @@ use NetherGames\Quiche\bindings\QuicheFFI;
 use NetherGames\Quiche\bindings\string_;
 use NetherGames\Quiche\bindings\uint8_t_ptr;
 use NetherGames\Quiche\Config;
+use NetherGames\Quiche\QuicheConnection;
+use NetherGames\Quiche\SocketAddress;
 use RuntimeException;
 use Socket;
+use function socket_close;
 use function socket_select;
 use function spl_object_id;
 
 abstract class QuicheSocket{
-    protected const LOCAL_CONN_ID_LEN = 16;
     public const SEND_BUFFER_SIZE = 65535;
 
     /** @var uint8_t_ptr shared temp buffer, used for reading/writing */
@@ -50,6 +52,16 @@ abstract class QuicheSocket{
         }
     }
 
+    /**
+     * @internal Used by QuicheConnection
+     */
+    abstract public function addSCID(string $scid, QuicheConnection $connection) : void;
+
+    /**
+     * @internal Used by QuicheConnection
+     */
+    abstract public function removeSCID(string $scid) : void;
+
     protected function setupSocketSettings(Socket $socket) : void{
         if(php_uname('s') !== 'Darwin'){
             if(!socket_set_option($socket, SOL_SOCKET, SO_SNDBUF, 8 * 1024 * 1024) || !socket_set_option($socket, SOL_SOCKET, SO_RCVBUF, 8 * 1024 * 1024)){
@@ -58,7 +70,15 @@ abstract class QuicheSocket{
         }
     }
 
-    public function close(bool $applicationError, int $error, string $reason) : void{
+    protected function getLocalAddress(Socket $socket) : SocketAddress{
+        if(socket_getsockname($socket, $localAddress, $localPort) === false){
+            throw new RuntimeException("Failed to get local address");
+        }
+
+        return new SocketAddress($localAddress, $localPort);
+    }
+
+    protected function onClosed() : void{
         foreach($this->sockets as $socket){
             socket_close($socket);
         }
@@ -69,8 +89,16 @@ abstract class QuicheSocket{
         $this->closed = true;
     }
 
+    public function close(bool $applicationError, int $error, string $reason) : void{
+        $this->onClosed();
+    }
+
     public function __destruct(){
         $this->config->free();
+
+        if(!$this->isClosed()){
+            $this->close(false, 0, "Object destructed");
+        }
     }
 
     abstract protected function handleOutgoing() : void;

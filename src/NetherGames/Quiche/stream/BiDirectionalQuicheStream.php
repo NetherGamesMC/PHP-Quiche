@@ -13,8 +13,8 @@ class BiDirectionalQuicheStream extends QuicheStream{
     use ReadableQuicheStreamTrait;
     use WriteableQuicheStreamTrait;
 
-    /** @var ?Closure function(bool $peerClosed) : void */
-    private ?Closure $onShutdown = null;
+    /** @var Closure[] function(bool $peerClosed) : void */
+    private array $onShutdown = [];
 
     public function __construct(
         QuicheFFI $bindings,
@@ -35,8 +35,8 @@ class BiDirectionalQuicheStream extends QuicheStream{
      *
      * @param Closure $onShutdown function(bool $peerClosed) : void
      */
-    public function setShutdownCallback(Closure $onShutdown) : void{
-        $this->onShutdown = $onShutdown;
+    public function addShutdownCallback(Closure $onShutdown) : void{
+        $this->onShutdown[] = $onShutdown;
     }
 
     protected function onPartialClose(bool $peerClosed) : void{
@@ -47,8 +47,10 @@ class BiDirectionalQuicheStream extends QuicheStream{
 
         parent::onPartialClose($peerClosed);
 
-        if($this->isClosed() && $this->onShutdown !== null){
-            ($this->onShutdown)($peerClosed);
+        if($this->isClosed()){
+            foreach($this->onShutdown as $onShutdown){
+                $onShutdown($peerClosed);
+            }
         }
     }
 

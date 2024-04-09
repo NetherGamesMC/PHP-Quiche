@@ -124,6 +124,9 @@ enum quiche_error {
 
     // Error in key update.
     QUICHE_ERR_KEY_UPDATE = -19,
+
+    // The peer sent more data in CRYPTO frames than we can buffer.
+    QUICHE_ERR_CRYPTO_BUFFER_EXCEEDED = -20,
 };
 
 // Returns a human readable string with the quiche version number.
@@ -160,6 +163,9 @@ void quiche_config_verify_peer(quiche_config *config, bool v);
 
 // Configures whether to send GREASE.
 void quiche_config_grease(quiche_config *config, bool v);
+
+// Configures whether to do path MTU discovery.
+void quiche_config_discover_pmtu(quiche_config *config, bool v);
 
 // Enables logging of secrets.
 void quiche_config_log_keys(quiche_config *config);

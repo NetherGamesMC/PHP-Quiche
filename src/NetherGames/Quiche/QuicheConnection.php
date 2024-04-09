@@ -3,11 +3,18 @@
 namespace NetherGames\Quiche;
 
 use Closure;
-use NetherGames\Quiche\bindings\quiche_recv_info_ptr;
+use NetherGames\Quiche\bindings\Quiche as QuicheBindings;
 use NetherGames\Quiche\bindings\quiche_send_info_ptr;
 use NetherGames\Quiche\bindings\QuicheFFI;
 use NetherGames\Quiche\bindings\struct_quiche_conn_ptr;
 use NetherGames\Quiche\bindings\uint8_t_ptr;
+use NetherGames\Quiche\event\ClosedPathEvent;
+use NetherGames\Quiche\event\Event;
+use NetherGames\Quiche\event\FailedValidationPathEvent;
+use NetherGames\Quiche\event\NewPathEvent;
+use NetherGames\Quiche\event\PeerMigratedPathEvent;
+use NetherGames\Quiche\event\ReusedSourceConnectionIdPathEvent;
+use NetherGames\Quiche\event\ValidatedPathEvent;
 use NetherGames\Quiche\io\Buffer;
 use NetherGames\Quiche\io\BufferUtils;
 use NetherGames\Quiche\io\QueueReader;
@@ -21,8 +28,9 @@ use NetherGames\Quiche\stream\QuicheStream;
 use NetherGames\Quiche\stream\ReadableQuicheStream;
 use NetherGames\Quiche\stream\WriteableQuicheStream;
 use RuntimeException;
+use Socket;
 use function microtime;
-use function socket_send;
+use function random_bytes;
 use function socket_sendto;
 use function strlen;
 use function substr;
@@ -32,7 +40,10 @@ class QuicheConnection{
 
     /** @var ?string buffer for datagrams that didn't get processed */
     private ?string $sendBuffer = null;
-    private quiche_send_info_ptr $sendInfo;
+
+    private quiche_send_info_ptr $sendInfo1;
+    private quiche_send_info_ptr $sendInfo2;
+    private bool $useSendInfo1 = false;
 
     /** @var ?Closure $dgramReadClosure function(string $data, int $length) : int */
     private ?Closure $dgramWriteClosure = null;
@@ -46,6 +57,9 @@ class QuicheConnection{
 
     private int $nextUnidirectionalStreamId;
     private int $nextBidirectionalStreamId;
+
+    /** @var array<int, Closure> */
+    private array $eventHandlers = [];
 
     private ?float $timeoutTime = null;
     private ?float $pingTime = null;
@@ -66,10 +80,11 @@ class QuicheConnection{
         private readonly Config $config,
         private readonly struct_quiche_conn_ptr $connection,
         private readonly Closure $acceptCallback,
+        private SocketAddress $localAddress,
         private SocketAddress $peerAddress,
         private int $socketId,
     ){
-        $isClient = $socket instanceof QuicheClientSocket;
+        $isClient = $this->isClient();
 
         // 0x0  | Client-Initiated, Bidirectional
         // 0x1  | Server-Initiated, Bidirectional
@@ -78,10 +93,25 @@ class QuicheConnection{
 
         $this->nextUnidirectionalStreamId = $isClient ? -2 : -1;
         $this->nextBidirectionalStreamId = $isClient ? -4 : -3;
-        $this->sendInfo = quiche_send_info_ptr::array();
+        $this->sendInfo1 = quiche_send_info_ptr::array();
+        $this->sendInfo2 = quiche_send_info_ptr::array();
     }
 
-    public function setQLogPath(string $logDir, string $logTitle, string $logDesc, string $prefix = '') : void{
+    private function nextSendInfo() : quiche_send_info_ptr{
+        $this->useSendInfo1 = !$this->useSendInfo1;
+
+        return $this->useSendInfo1 ? $this->sendInfo1 : $this->sendInfo2;
+    }
+
+    public function isServer() : bool{
+        return $this->socket instanceof QuicheServerSocket;
+    }
+
+    public function isClient() : bool{
+        return $this->socket instanceof QuicheClientSocket;
+    }
+
+    public function setQLogPath(string $logDir, string $logTitle, string $logDesc, string $prefix = '') : string{
         $this->bindings->quiche_conn_trace_id(
             $this->connection,
             [&$traceId],
@@ -92,6 +122,8 @@ class QuicheConnection{
         if(!$this->bindings->quiche_conn_set_qlog_path($this->connection, $filePath, $logTitle, $logDesc)){
             throw new RuntimeException('Failed to set qlog path');
         }
+
+        return $filePath;
     }
 
     public function setKeylogFilePath(string $keylogFilePath) : void{
@@ -111,8 +143,19 @@ class QuicheConnection{
         $this->onPeerClose = $onPeerClose;
     }
 
+    /**
+     * @param Closure $handler function(Event $event) : void
+     */
+    public function registerEventHandler(Closure $handler) : void{
+        $this->eventHandlers[] = $handler;
+    }
+
     public function getPeerAddress() : SocketAddress{
         return $this->peerAddress;
+    }
+
+    public function getLocalAddress() : SocketAddress{
+        return $this->localAddress;
     }
 
     /**
@@ -121,7 +164,7 @@ class QuicheConnection{
     public function enableDatagrams(Closure $incomingBuffer, int $recvQueueLen, int $sendQueueLen) : QueueWriter{
         $this->config->enableDgram(true, $recvQueueLen, $sendQueueLen);
 
-        [$read, $write] = Buffer::create();
+        [$read, $write] = Buffer::create(fn() => $this->sendDatagrams());
         $this->outgoingDgramBuffer = $read;
         $this->incomingDgramBuffer = $incomingBuffer;
 
@@ -131,12 +174,18 @@ class QuicheConnection{
     public function handleIncoming(
         string $buffer,
         int $length,
-        quiche_recv_info_ptr $recvInfo,
+        SocketAddress $local,
+        SocketAddress $peer,
     ) : bool{
-        $done = $this->bindings->quiche_conn_recv($this->connection, $buffer, $length, $recvInfo);
+        $info = SocketAddress::createRevcInfo($peer, $local);
+
+        $done = $this->bindings->quiche_conn_recv($this->connection, $buffer, $length, $info);
         if($done < 0){
             return true; // failed to process packet
         }
+
+        $this->localAddress = $local;
+        $this->peerAddress = $peer;
 
         $this->scheduleTimeout();
         $this->schedulePing();
@@ -152,7 +201,128 @@ class QuicheConnection{
             $this->receiveDatagrams();
         }
 
+        if($this->config->hasActiveMigration()){
+            $this->handlePathEvents();
+            $this->handleSCIDs();
+        }
+
         return !$this->closed;
+    }
+
+    private function handleSCIDs() : void{
+        while(($this->bindings->quiche_conn_retired_scid_next($this->connection, [&$id], [&$idLength]))){
+            $this->socket->removeSCID($id->toString($idLength));
+        }
+
+        while(($this->bindings->quiche_conn_scids_left($this->connection)) > 0){
+            $scid = random_bytes($scidLength = QuicheBindings::QUICHE_MAX_CONN_ID_LEN);
+
+            $this->socket->addSCID($scid, $this);
+
+            $this->bindings->quiche_conn_new_scid(
+                $this->connection,
+                $scid,
+                $scidLength,
+                random_bytes(16),
+                false,
+                [&$seq]
+            );
+        }
+    }
+
+    public function probePath(SocketAddress $from = null, SocketAddress $to = null) : bool{
+        $from = ($from ?? $this->localAddress);
+        $to = ($to ?? $this->peerAddress);
+
+        $this->bindings->quiche_conn_probe_path(
+            $this->connection,
+            $local = $from->getSocketAddressPtr(),
+            QuicheBindings::sizeof($local[0]),
+            $peer = $to->getSocketAddressPtr(),
+            QuicheBindings::sizeof($peer[0]),
+            [&$seq]
+        );
+
+        return $seq === 0;
+    }
+
+    private function callEvent(Event $event) : void{
+        foreach($this->eventHandlers as $handler){
+            $handler($event);
+        }
+    }
+
+    private function handlePathEvents() : void{
+        while(($event = $this->bindings->quiche_conn_path_event_next($this->connection)) > 0){
+            $type = $this->bindings->quiche_path_event_type($event);
+
+            switch($type){
+                case QuicheBindings::QUICHE_PATH_EVENT_NEW:
+                    $this->bindings->quiche_path_event_new($event, [&$local], [&$localLength], [&$peer], [&$peerLength]);
+
+                    $this->callEvent(new NewPathEvent(
+                        SocketAddress::createFromFFI($local),
+                        SocketAddress::createFromFFI($peer)
+                    ));
+                    break;
+                case QuicheBindings::QUICHE_PATH_EVENT_VALIDATED:
+                    $this->bindings->quiche_path_event_validated($event, [&$from], [&$fromLength], [&$to], [&$toLength]);
+
+                    $this->callEvent($ev = new ValidatedPathEvent(
+                        SocketAddress::createFromFFI($from),
+                        SocketAddress::createFromFFI($to)
+                    ));
+
+                    if($ev->shouldMigrate()){
+                        $this->bindings->quiche_conn_migrate(
+                            $this->connection,
+                            $local = $ev->getLocalAddress()->getSocketAddressPtr(),
+                            QuicheBindings::sizeof($local[0]),
+                            $peer = $ev->getPeerAddress()->getSocketAddressPtr(),
+                            QuicheBindings::sizeof($peer[0]),
+                            [&$seq]
+                        );
+                    }
+                    break;
+                case QuicheBindings::QUICHE_PATH_EVENT_FAILED_VALIDATION:
+                    $this->bindings->quiche_path_event_failed_validation($event, [&$local], [&$localLength], [&$peer], [&$peerLength]);
+
+                    $this->callEvent(new FailedValidationPathEvent(
+                        SocketAddress::createFromFFI($local),
+                        SocketAddress::createFromFFI($peer)
+                    ));
+                    break;
+                case QuicheBindings::QUICHE_PATH_EVENT_CLOSED:
+                    $this->bindings->quiche_path_event_closed($event, [&$local], [&$localLength], [&$peer], [&$peerLength]);
+
+                    $this->callEvent(new ClosedPathEvent(
+                        SocketAddress::createFromFFI($local),
+                        SocketAddress::createFromFFI($peer)
+                    ));
+                    break;
+                case QuicheBindings::QUICHE_PATH_EVENT_REUSED_SOURCE_CONNECTION_ID:
+                    $this->bindings->quiche_path_event_reused_source_connection_id($event, [&$id], [&$oldLocal], [&$oldLocalLength], [&$oldPeer], [&$oldPeerLength], [&$local], [&$localLength], [&$peer], [&$peerLength]);
+
+                    $this->callEvent(new ReusedSourceConnectionIdPathEvent(
+                        $id,
+                        SocketAddress::createFromFFI($oldLocal),
+                        SocketAddress::createFromFFI($oldPeer),
+                        SocketAddress::createFromFFI($local),
+                        SocketAddress::createFromFFI($peer)
+                    ));
+                    break;
+                case QuicheBindings::QUICHE_PATH_EVENT_PEER_MIGRATED:
+                    $this->bindings->quiche_path_event_peer_migrated($event, [&$local], [&$localLength], [&$peer], [&$peerLength]);
+
+                    $this->callEvent(new PeerMigratedPathEvent(
+                        SocketAddress::createFromFFI($local),
+                        SocketAddress::createFromFFI($peer)
+                    ));
+                    break;
+            }
+
+            $this->bindings->quiche_path_event_free($event);
+        }
     }
 
     /**
@@ -161,9 +331,8 @@ class QuicheConnection{
     private function onClosedByPeer() : void{
         $this->closed = true;
 
-        foreach($this->streams as $streamId => $stream){
+        foreach($this->streams as $stream){
             $stream->onConnectionClose(true);
-            unset($this->streams[$streamId]);
         }
 
         $this->bindings->quiche_conn_peer_error(
@@ -183,14 +352,12 @@ class QuicheConnection{
         return $this->closed;
     }
 
-    private function sendToSocket(string $data, int $length) : int|false{
-        $socket = $this->socket->getSocketById($this->socketId);
+    private function getPHPSocket() : Socket{
+        return $this->socket->getSocketById($this->socketId);
+    }
 
-        if($this->socket instanceof QuicheServerSocket){
-            return socket_sendto($socket, $data, $length, 0, $this->peerAddress->getAddress(), $this->peerAddress->getPort());
-        }else{
-            return socket_send($socket, $data, $length, 0);
-        }
+    private function sendToSocket(string $data, int $length) : int|false{
+        return socket_sendto($this->getPHPSocket(), $data, $length, 0, $this->peerAddress->getAddress(), $this->peerAddress->getPort());
     }
 
     public function hasOutgoingQueue(int $socketId = null) : bool{
@@ -218,7 +385,7 @@ class QuicheConnection{
         return true;
     }
 
-    public function ping() : void{
+    private function ping() : void{
         $this->bindings->quiche_conn_send_ack_eliciting($this->connection);
     }
 
@@ -237,11 +404,7 @@ class QuicheConnection{
         if($this->bindings->quiche_conn_is_established($this->connection) || $this->bindings->quiche_conn_is_in_early_data($this->connection)){
             if($this->isEstablished){
                 while(($streamId = $this->bindings->quiche_conn_stream_writable_next($this->connection)) >= 0){
-                    $stream = $this->streams[$streamId] ?? null;
-
-                    if($stream !== null && !$stream->handleOutgoing() && $stream->isClosed()){
-                        unset($this->streams[$streamId]);
-                    }
+                    ($this->streams[$streamId] ?? null)?->handleOutgoing();
                 }
             }else{
                 foreach($this->streams as $stream){
@@ -261,34 +424,30 @@ class QuicheConnection{
 
     private function send() : void{
         if($this->sendBuffer === null){
+            $sendInfo = $this->nextSendInfo();
+
             while(0 < ($written = $this->bindings->quiche_conn_send(
                     $this->connection,
                     $this->tempBuffer,
-                    $this->config->getMaxSendUdpPayloadSize(),
-                    $this->sendInfo,
+                    min($this->config->getMaxSendUdpPayloadSize(), $this->bindings->quiche_conn_send_quantum($this->connection)),
+                    $sendInfo,
                 ))){
+
+                $this->localAddress = SocketAddress::createFromFFI($sendInfo->from);
+                $this->peerAddress = SocketAddress::createFromFFI($sendInfo->to);
+
                 if($this->socket instanceof QuicheServerSocket){
-                    $targetAddress = SocketAddress::createFromFFI($this->sendInfo->to);
-
-                    if($targetAddress !== $this->peerAddress){
-                        $this->peerAddress = $targetAddress;
-                    }
-
-                    $sourceAddress = SocketAddress::createFromFFI($this->sendInfo->from);
-                    $socketId = $this->socket->getSocketIdBySocketAddress($sourceAddress);
-
-                    if($socketId !== $this->socketId){
-                        $this->socketId = $socketId;
-                    }
+                    $this->socketId = $this->socket->getSocketIdBySocketAddress($this->localAddress);
                 }
 
-                $writtenLength = $this->sendToSocket($this->tempBuffer->toString($written), $written);
+                $writtenLength = $this->sendToSocket($data = $this->tempBuffer->toString($written), $written);
 
                 if($writtenLength === false){
-                    $this->sendBuffer = $this->tempBuffer->toString($written);
+                    $this->sendBuffer = $data;
                 }elseif($writtenLength !== $written){
-                    $this->sendBuffer = substr($this->tempBuffer->toString($written), $writtenLength);
+                    $this->sendBuffer = substr($data, $writtenLength);
                 }else{
+                    $sendInfo = $this->nextSendInfo();
                     continue;
                 }
 
@@ -326,6 +485,13 @@ class QuicheConnection{
         }
     }
 
+    public function getSession() : string{
+        /** @var uint8_t_ptr $out */
+        $this->bindings->quiche_conn_session($this->connection, [&$out], [&$outLength]);
+
+        return $out->toString($outLength);
+    }
+
     public function close(bool $applicationError, int $error, string $reason) : void{
         $this->closed = true;
 
@@ -333,9 +499,8 @@ class QuicheConnection{
         $this->bindings->quiche_conn_close($this->connection, (int) $applicationError, $error, $reason, strlen($reason));
         $this->send(); // send the close packet
 
-        foreach($this->streams as $streamId => $stream){
+        foreach($this->streams as $stream){
             $stream->onConnectionClose(false);
-            unset($this->streams[$streamId]);
         }
     }
 
@@ -344,36 +509,52 @@ class QuicheConnection{
     }
 
     private function openBidirectionalStreamById(int $streamId) : BiDirectionalQuicheStream{
-        return $this->streams[$streamId] = new BiDirectionalQuicheStream(
+        $this->streams[$streamId] = $stream = new BiDirectionalQuicheStream(
             $this->bindings,
             $streamId,
             $this->connection,
             $this->tempBuffer
         );
+
+        $stream->addShutdownCallback(function(bool $peerClosed) use ($streamId) : void{
+            unset($this->streams[$streamId]);
+        });
+
+        return $stream;
     }
 
     public function openUnidirectionalStream() : QuicheStream{
-        return $this->streams[$streamId = $this->nextUnidirectionalStreamId += 4] = new WriteableQuicheStream(
+        $this->streams[$streamId = $this->nextUnidirectionalStreamId += 4] = $stream = new WriteableQuicheStream(
             $this->bindings,
             $streamId,
             $this->connection,
         );
+
+        $stream->addShutdownWritingCallback(function(bool $peerClosed) use ($streamId) : void{
+            unset($this->streams[$streamId]);
+        });
+
+        return $stream;
     }
 
     private function openUnidirectionalStreamById(int $streamId) : QuicheStream{
-        return $this->streams[$streamId] = new ReadableQuicheStream(
+        $this->streams[$streamId] = $stream = new ReadableQuicheStream(
             $this->bindings,
             $streamId,
             $this->connection,
             $this->tempBuffer
         );
+
+        $stream->addShutdownReadingCallback(function(bool $peerClosed) use ($streamId) : void{
+            unset($this->streams[$streamId]);
+        });
+
+        return $stream;
     }
 
     private function receiveStreams() : void{
         while(($streamId = $this->bindings->quiche_conn_stream_readable_next($this->connection)) >= 0){
-            $stream = $this->streams[$streamId] ?? null;
-
-            if($stream === null){
+            if(($stream = $this->streams[$streamId] ?? null) === null){
                 if($streamId % 4 === 0 || $streamId % 4 === 1){ // Client-Initiated or Server-Initiated Bidirectional
                     $stream = $this->openBidirectionalStreamById($streamId);
                 }else{
@@ -383,9 +564,7 @@ class QuicheConnection{
                 ($this->acceptCallback)($this, $stream);
             }
 
-            if(!$stream->handleIncoming() && $stream->isClosed()){
-                unset($this->streams[$streamId]);
-            }
+            $stream->handleIncoming();
         }
     }
 

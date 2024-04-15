@@ -41,9 +41,8 @@ class QuicheConnection{
     /** @var ?string buffer for datagrams that didn't get processed */
     private ?string $sendBuffer = null;
 
-    private quiche_send_info_ptr $sendInfo1;
-    private quiche_send_info_ptr $sendInfo2;
-    private bool $useSendInfo1 = false;
+    private quiche_send_info_ptr $sendInfo;
+    private uint8_t_ptr $scidRetirePtr;
 
     /** @var ?Closure $dgramReadClosure function(string $data, int $length) : int */
     private ?Closure $dgramWriteClosure = null;
@@ -93,14 +92,8 @@ class QuicheConnection{
 
         $this->nextUnidirectionalStreamId = $isClient ? -2 : -1;
         $this->nextBidirectionalStreamId = $isClient ? -4 : -3;
-        $this->sendInfo1 = quiche_send_info_ptr::array();
-        $this->sendInfo2 = quiche_send_info_ptr::array();
-    }
-
-    private function nextSendInfo() : quiche_send_info_ptr{
-        $this->useSendInfo1 = !$this->useSendInfo1;
-
-        return $this->useSendInfo1 ? $this->sendInfo1 : $this->sendInfo2;
+        $this->sendInfo = quiche_send_info_ptr::array();
+        $this->scidRetirePtr = uint8_t_ptr::array(QuicheBindings::QUICHE_MAX_CONN_ID_LEN);
     }
 
     public function isServer() : bool{
@@ -111,14 +104,19 @@ class QuicheConnection{
         return $this->socket instanceof QuicheClientSocket;
     }
 
-    public function setQLogPath(string $logDir, string $logTitle, string $logDesc, string $prefix = '') : string{
+    public function getTraceId() : string{
+        $traceId = uint8_t_ptr::array($length = QuicheBindings::QUICHE_MAX_CONN_ID_LEN * 2);
         $this->bindings->quiche_conn_trace_id(
             $this->connection,
             [&$traceId],
-            [&$traceIdLength],
+            [&$length],
         );
 
-        $filePath = $logDir . '/' . (strlen($prefix) > 0 ? $prefix . '-' : '') . $traceId->toString($traceIdLength) . '.' . self::QLOG_FILE_EXTENSION;
+        return $traceId->toString($length);
+    }
+
+    public function setQLogPath(string $logDir, string $logTitle, string $logDesc, string $prefix = '') : string{
+        $filePath = $logDir . '/' . (strlen($prefix) > 0 ? $prefix . '-' : '') . $this->getTraceId() . '.' . self::QLOG_FILE_EXTENSION;
         if(!$this->bindings->quiche_conn_set_qlog_path($this->connection, $filePath, $logTitle, $logDesc)){
             throw new RuntimeException('Failed to set qlog path');
         }
@@ -210,8 +208,8 @@ class QuicheConnection{
     }
 
     private function handleSCIDs() : void{
-        while(($this->bindings->quiche_conn_retired_scid_next($this->connection, [&$id], [&$idLength]))){
-            $this->socket->removeSCID($id->toString($idLength));
+        while(($this->bindings->quiche_conn_retired_scid_next($this->connection, [&$this->scidRetirePtr], [&$length])) > 0){
+            $this->socket->removeSCID($this->scidRetirePtr->toString($length));
         }
 
         while(($this->bindings->quiche_conn_scids_left($this->connection)) > 0){
@@ -424,17 +422,15 @@ class QuicheConnection{
 
     private function send() : void{
         if($this->sendBuffer === null){
-            $sendInfo = $this->nextSendInfo();
-
             while(0 < ($written = $this->bindings->quiche_conn_send(
                     $this->connection,
                     $this->tempBuffer,
                     min($this->config->getMaxSendUdpPayloadSize(), $this->bindings->quiche_conn_send_quantum($this->connection)),
-                    $sendInfo,
+                    $this->sendInfo,
                 ))){
 
-                $this->localAddress = SocketAddress::createFromFFI($sendInfo->from);
-                $this->peerAddress = SocketAddress::createFromFFI($sendInfo->to);
+                $this->localAddress = SocketAddress::createFromFFI($this->sendInfo->from);
+                $this->peerAddress = SocketAddress::createFromFFI($this->sendInfo->to);
 
                 if($this->socket instanceof QuicheServerSocket){
                     $this->socketId = $this->socket->getSocketIdBySocketAddress($this->localAddress);
@@ -447,7 +443,6 @@ class QuicheConnection{
                 }elseif($writtenLength !== $written){
                     $this->sendBuffer = substr($data, $writtenLength);
                 }else{
-                    $sendInfo = $this->nextSendInfo();
                     continue;
                 }
 
@@ -486,10 +481,10 @@ class QuicheConnection{
     }
 
     public function getSession() : string{
-        /** @var uint8_t_ptr $out */
-        $this->bindings->quiche_conn_session($this->connection, [&$out], [&$outLength]);
+        $buffer = uint8_t_ptr::array($length = 65535);
+        $this->bindings->quiche_conn_session($this->connection, [&$buffer], [&$length]);
 
-        return $out->toString($outLength);
+        return $buffer->toString($length);
     }
 
     public function close(bool $applicationError, int $error, string $reason) : void{

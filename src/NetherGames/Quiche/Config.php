@@ -112,6 +112,16 @@ class Config{
         return $this->pingInterval;
     }
 
+    public function setMaxAmplificationFactor(int $factor) : self{
+        if($factor < 1){
+            throw new InvalidArgumentException("MaxAmplificationFactor must be at least 1");
+        }
+
+        $this->bindings->quiche_config_set_max_amplification_factor($this->config, $factor);
+
+        return $this;
+    }
+
     public function setMaxIdleTimeout(int $timeout) : self{
         if($timeout < 0){
             throw new InvalidArgumentException("MaxIdleTimeout must be positive");

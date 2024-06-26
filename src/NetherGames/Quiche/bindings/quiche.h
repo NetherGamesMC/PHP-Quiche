@@ -27,10 +27,6 @@
 #ifndef QUICHE_H
 #define QUICHE_H
 
-#if defined(__cplusplus)
-extern "C" {
-#endif
-
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -50,6 +46,10 @@ extern "C" {
 #ifdef _MSC_VER
 #include <BaseTsd.h>
 #define ssize_t SSIZE_T
+#endif
+
+#if defined(__cplusplus)
+extern "C" {
 #endif
 
 // QUIC transport API.
@@ -177,6 +177,9 @@ void quiche_config_enable_early_data(quiche_config *config);
 int quiche_config_set_application_protos(quiche_config *config,
                                          const uint8_t *protos,
                                          size_t protos_len);
+
+// Sets the anti-amplification limit factor.
+void quiche_config_set_max_amplification_factor(quiche_config *config, size_t v);
 
 // Sets the `max_idle_timeout` transport parameter, in milliseconds, default is
 // no timeout.
@@ -378,12 +381,18 @@ size_t quiche_conn_send_quantum_on_path(const quiche_conn *conn,
 
 
 // Reads contiguous data from a stream.
+// out_error_code is only set when STREAM_STOPPED or STREAM_RESET are returned.
+// Set to the reported error code associated with STOP_SENDING or STREAM_RESET. 
 ssize_t quiche_conn_stream_recv(quiche_conn *conn, uint64_t stream_id,
-                                uint8_t *out, size_t buf_len, bool *fin);
+                                uint8_t *out, size_t buf_len, bool *fin,
+                                uint64_t *out_error_code);
 
 // Writes data to a stream.
+// out_error_code is only set when STREAM_STOPPED or STREAM_RESET are returned.
+// Set to the reported error code associated with STOP_SENDING or STREAM_RESET. 
 ssize_t quiche_conn_stream_send(quiche_conn *conn, uint64_t stream_id,
-                                const uint8_t *buf, size_t buf_len, bool fin);
+                                const uint8_t *buf, size_t buf_len, bool fin,
+                                uint64_t *out_error_code);
 
 // The side of the stream to be shut down.
 enum quiche_shutdown {
@@ -547,6 +556,9 @@ typedef struct {
 
     // The number of received bytes.
     uint64_t recv_bytes;
+
+    // The number of bytes acked.
+    uint64_t acked_bytes;
 
     // The number of bytes lost.
     uint64_t lost_bytes;

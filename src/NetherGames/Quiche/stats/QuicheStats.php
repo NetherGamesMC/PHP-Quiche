@@ -17,6 +17,7 @@ class QuicheStats extends MinimalQuicheStats{
 
     /** @var list<QuichePathStats> */
     private array $paths = [];
+    private int $ackedBytes;
     private int $resetStreamCountLocal;
     private int $stoppedStreamCountLocal;
     private int $resetStreamCountRemote;
@@ -33,6 +34,7 @@ class QuicheStats extends MinimalQuicheStats{
             $this->paths[] = QuichePathStats::getQuichePathStats($bindings, $connectionPointer, $i);
         }
 
+        $this->ackedBytes = $stats->acked_bytes;
         $this->resetStreamCountLocal = $stats->reset_stream_count_local;
         $this->stoppedStreamCountLocal = $stats->stopped_stream_count_local;
         $this->resetStreamCountRemote = $stats->reset_stream_count_remote;
@@ -44,6 +46,10 @@ class QuicheStats extends MinimalQuicheStats{
      */
     public function getPaths() : array{
         return $this->paths;
+    }
+
+    public function getAckedBytes() : int{
+        return $this->ackedBytes;
     }
 
     public function getResetStreamCountLocal() : int{

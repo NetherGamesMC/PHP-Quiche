@@ -21,7 +21,8 @@ trait ReadableQuicheStreamTrait{
             $this->id,
             $this->tempBuffer,
             QuicheSocket::SEND_BUFFER_SIZE,
-            [&$fin]
+            [&$fin],
+            [&$outErrorCode]
         );
 
         if($received > 0){

@@ -30,7 +30,7 @@ trait WriteableQuicheStreamTrait{
                     $this->onShutdownWriting(false);
                 }
 
-                return $this->bindings->quiche_conn_stream_send($this->connection, $this->id, $data, $length, (int) $fin);
+                return $this->bindings->quiche_conn_stream_send($this->connection, $this->id, $data, $length, (int) $fin, [&$outErrorCode]);
             }
         );
 
@@ -93,7 +93,7 @@ trait WriteableQuicheStreamTrait{
         }
 
         if($this->reader->isEmpty()){
-            $this->bindings->quiche_conn_stream_send($this->connection, $this->id, null, 0, 1);
+            $this->bindings->quiche_conn_stream_send($this->connection, $this->id, null, 0, 1, [&$outErrorCode]);
             $this->onShutdownWriting(false);
         }else{
             $this->shouldShutdownWriting = true;

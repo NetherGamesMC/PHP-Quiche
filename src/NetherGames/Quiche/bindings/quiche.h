@@ -333,6 +333,10 @@ void quiche_conn_set_qlog_fd(quiche_conn *conn, int fd, const char *log_title,
 // Configures the given session for resumption.
 int quiche_conn_set_session(quiche_conn *conn, const uint8_t *buf, size_t buf_len);
 
+// Sets the `max_idle_timeout` transport parameter, in milliseconds, default is
+// no timeout.
+int quiche_conn_set_max_idle_timeout(quiche_conn *conn, uint64_t v);
+
 typedef struct {
     // The remote address the packet was received from.
     struct sockaddr *from;
@@ -382,14 +386,14 @@ size_t quiche_conn_send_quantum_on_path(const quiche_conn *conn,
 
 // Reads contiguous data from a stream.
 // out_error_code is only set when STREAM_STOPPED or STREAM_RESET are returned.
-// Set to the reported error code associated with STOP_SENDING or STREAM_RESET. 
+// Set to the reported error code associated with STOP_SENDING or STREAM_RESET.
 ssize_t quiche_conn_stream_recv(quiche_conn *conn, uint64_t stream_id,
                                 uint8_t *out, size_t buf_len, bool *fin,
                                 uint64_t *out_error_code);
 
 // Writes data to a stream.
 // out_error_code is only set when STREAM_STOPPED or STREAM_RESET are returned.
-// Set to the reported error code associated with STOP_SENDING or STREAM_RESET. 
+// Set to the reported error code associated with STOP_SENDING or STREAM_RESET.
 ssize_t quiche_conn_stream_send(quiche_conn *conn, uint64_t stream_id,
                                 const uint8_t *buf, size_t buf_len, bool fin,
                                 uint64_t *out_error_code);
@@ -484,6 +488,9 @@ void quiche_conn_peer_cert(const quiche_conn *conn, const uint8_t **out, size_t 
 
 // Returns the serialized cryptographic session for the connection.
 void quiche_conn_session(const quiche_conn *conn, const uint8_t **out, size_t *out_len);
+
+// Returns the server name requested by the client.
+void quiche_conn_server_name(const quiche_conn *conn, const uint8_t **out, size_t *out_len);
 
 // Returns true if the connection handshake is complete.
 bool quiche_conn_is_established(const quiche_conn *conn);
@@ -660,6 +667,12 @@ typedef struct {
     // The estimated round-trip time of the path (in nanoseconds).
     uint64_t rtt;
 
+    // The minimum round-trip time observed (in nanoseconds).
+    uint64_t min_rtt;
+
+    // The estimated round-trip time variation (in nanoseconds).
+    uint64_t rttvar;
+
     // The size of the path's congestion window in bytes.
     size_t cwnd;
 
@@ -787,36 +800,36 @@ enum quiche_path_event_type {
 typedef struct quiche_path_event quiche_path_event;
 
 // Retrieves the next event. Returns NULL if there is no event to process.
-const quiche_path_event *quiche_conn_path_event_next(quiche_conn *conn);
+quiche_path_event *quiche_conn_path_event_next(quiche_conn *conn);
 
 // Returns the type of the event.
-enum quiche_path_event_type quiche_path_event_type(quiche_path_event *ev);
+enum quiche_path_event_type quiche_path_event_type(const quiche_path_event *ev);
 
 // Should be called if the quiche_path_event_type(...) returns QUICHE_PATH_EVENT_NEW.
-void quiche_path_event_new(quiche_path_event *ev,
+void quiche_path_event_new(const quiche_path_event *ev,
                            struct sockaddr_storage *local, socklen_t *local_len, struct sockaddr_storage *peer, socklen_t *peer_len);
 
 // Should be called if the quiche_path_event_type(...) returns QUICHE_PATH_EVENT_VALIDATED.
-void quiche_path_event_validated(quiche_path_event *ev,
+void quiche_path_event_validated(const quiche_path_event *ev,
                            struct sockaddr_storage *local, socklen_t *local_len, struct sockaddr_storage *peer, socklen_t *peer_len);
 
 // Should be called if the quiche_path_event_type(...) returns QUICHE_PATH_EVENT_FAILED_VALIDATION.
-void quiche_path_event_failed_validation(quiche_path_event *ev,
+void quiche_path_event_failed_validation(const quiche_path_event *ev,
                            struct sockaddr_storage *local, socklen_t *local_len, struct sockaddr_storage *peer, socklen_t *peer_len);
 
 // Should be called if the quiche_path_event_type(...) returns QUICHE_PATH_EVENT_CLOSED.
-void quiche_path_event_closed(quiche_path_event *ev,
+void quiche_path_event_closed(const quiche_path_event *ev,
                            struct sockaddr_storage *local, socklen_t *local_len, struct sockaddr_storage *peer, socklen_t *peer_len);
 
 // Should be called if the quiche_path_event_type(...) returns QUICHE_PATH_EVENT_REUSED_SOURCE_CONNECTION_ID.
-void quiche_path_event_reused_source_connection_id(quiche_path_event *ev, uint64_t *id,
+void quiche_path_event_reused_source_connection_id(const quiche_path_event *ev, uint64_t *id,
                            struct sockaddr_storage *old_local, socklen_t *old_local_len,
                            struct sockaddr_storage *old_peer, socklen_t *old_peer_len,
                            struct sockaddr_storage *local, socklen_t *local_len,
                            struct sockaddr_storage *peer, socklen_t *peer_len);
 
 // Should be called if the quiche_path_event_type(...) returns QUICHE_PATH_EVENT_PEER_MIGRATED.
-void quiche_path_event_peer_migrated(quiche_path_event *ev,
+void quiche_path_event_peer_migrated(const quiche_path_event *ev,
                            struct sockaddr_storage *local, socklen_t *local_len,
                            struct sockaddr_storage *peer, socklen_t *peer_len);
 
@@ -1060,8 +1073,8 @@ int quiche_h3_for_each_setting(quiche_h3_conn *conn,
                                          uint64_t value, void *argp),
                                void *argp);
 
-// Check whether data will follow the headers on the stream.
-bool quiche_h3_event_headers_has_body(quiche_h3_event *ev);
+// Check whether more frames will follow the headers on the stream.
+bool quiche_h3_event_headers_has_more_frames(quiche_h3_event *ev);
 
 // Check whether or not extended connection is enabled by the peer
 bool quiche_h3_extended_connect_enabled_by_peer(quiche_h3_conn *conn);
@@ -1098,6 +1111,12 @@ int quiche_h3_send_response_with_priority(quiche_h3_conn *conn,
                             quiche_conn *quic_conn, uint64_t stream_id,
                             const quiche_h3_header *headers, size_t headers_len,
                             quiche_h3_priority *priority, bool fin);
+
+// Sends additional HTTP/3 headers on the specified stream.
+int quiche_h3_send_additional_headers(quiche_h3_conn *conn,
+                            quiche_conn *quic_conn, uint64_t stream_id,
+                            quiche_h3_header *headers, size_t headers_len,
+                            bool is_trailer_section, bool fin);
 
 // Sends an HTTP/3 body chunk on the given stream.
 ssize_t quiche_h3_send_body(quiche_h3_conn *conn, quiche_conn *quic_conn,
@@ -1139,6 +1158,17 @@ int quiche_h3_take_last_priority_update(quiche_h3_conn *conn,
 // Returns whether the peer enabled HTTP/3 DATAGRAM frame support.
 bool quiche_h3_dgram_enabled_by_peer(quiche_h3_conn *conn,
                                      quiche_conn *quic_conn);
+
+typedef struct {
+    // The number of bytes received on the QPACK encoder stream.
+    uint64_t qpack_encoder_stream_recv_bytes;
+
+    // The number of bytes received on the QPACK decoder stream.
+    uint64_t qpack_decoder_stream_recv_bytes;
+} quiche_h3_stats;
+
+// Collects and returns statistics about the connection.
+void quiche_h3_conn_stats(const quiche_h3_conn *conn, quiche_h3_stats *out);
 
 // Frees the HTTP/3 connection object.
 void quiche_h3_conn_free(quiche_h3_conn *conn);

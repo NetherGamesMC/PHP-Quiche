@@ -14,6 +14,8 @@ class QuichePathStats extends MinimalQuicheStats{
     private int $validationState;
     private bool $active;
     private float $rtt;
+    private float $minRTT;
+    private float $rttVar;
     private int $congestionWindow;
     private int $pmtu;
     private int $deliveryRate;
@@ -38,6 +40,8 @@ class QuichePathStats extends MinimalQuicheStats{
         $this->validationState = $stats->validation_state;
         $this->active = (bool) $stats->active;
         $this->rtt = $stats->rtt;
+        $this->minRTT = $stats->min_rtt;
+        $this->rttVar = $stats->rttvar;
         $this->congestionWindow = $stats->cwnd;
         $this->pmtu = $stats->pmtu;
         $this->deliveryRate = $stats->delivery_rate;
@@ -61,6 +65,14 @@ class QuichePathStats extends MinimalQuicheStats{
 
     public function getRTT() : float{
         return $this->rtt;
+    }
+
+    public function getMinRTT() : float{
+        return $this->minRTT;
+    }
+
+    public function getRTTVar() : float{
+        return $this->rttVar;
     }
 
     public function getCongestionWindow() : int{

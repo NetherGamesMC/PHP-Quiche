@@ -92,7 +92,7 @@ class QuicheClientSocket extends QuicheSocket{
             $this->config,
             $connection,
             $this->acceptCallback,
-            $this->getLocalAddress($this->socket),
+            $localAddress,
             $this->peerAddress,
             spl_object_id($this->socket)
         );

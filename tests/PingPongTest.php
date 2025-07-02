@@ -45,6 +45,8 @@ class PingPongTest extends TestCase{
     private static function configureBaseSocket(Config $socketConfig) : void{
         $socketConfig->discoverPMTUD(true);
         $socketConfig->setEnableActiveMigration(false);
+        $socketConfig->setEnableActiveMigration(true);
+        $socketConfig->enableStatelessRetry(true);
         $socketConfig->enableBidirectionalStreams();
         $socketConfig->setApplicationProtos(["pingpong"]);
         $socketConfig->setInitialMaxData(10000000);
@@ -397,11 +399,13 @@ class PingPongTest extends TestCase{
                     self::assertTrue($data === "ping", "Ping should arrive as ping");
 
                     if($resumedSession){
+                        self::assertTrue($connection->isResumed(), "Connection should be resumed");
                         $writer->writeWithPromise("pong")->onResult(function() use ($connection, &$sendingSucceeded) : void{
                             $connection->close(false, 0, "Bye");
                             $sendingSucceeded = true;
                         });
                     }else{
+                        self::assertFalse($connection->isResumed(), "Connection should not be resumed yet");
                         $writer->writeWithPromise("pong")->onResult(function() use ($connection, &$resumedSession) : void{
                             $resumedSession = true;
                             $connection->close(false, 0, "Bye");
@@ -424,8 +428,9 @@ class PingPongTest extends TestCase{
         $writer = $stream->setupWriter();
         $writer->write("ping");
 
-        $stream->setOnDataArrival(function(string $data) use (&$arrival) : void{
+        $stream->setOnDataArrival(function(string $data) use ($clientConnection, &$arrival) : void{
             self::assertTrue($data === "pong", "Pong should arrive as pong");
+            self::assertFalse($clientConnection->isResumed(), "Connection should not be resumed yet");
             $arrival = true;
         });
 
@@ -451,8 +456,9 @@ class PingPongTest extends TestCase{
             $writer = $stream->setupWriter();
             $writer->write("ping");
 
-            $stream->setOnDataArrival(function(string $data) use ($writer, &$arrivalResumption) : void{
+            $stream->setOnDataArrival(function(string $data) use ($newClientConnection, $writer, &$arrivalResumption) : void{
                 self::assertTrue($data === "pong", "Pong should arrive as pong");
+                self::assertTrue($newClientConnection->isResumed(), "Connection should be resumed now");
                 $writer->write("ping");
                 $arrivalResumption = true;
             });

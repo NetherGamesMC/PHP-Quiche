@@ -43,9 +43,6 @@ jobs:
       - name: Install Composer dependencies
         run: ./bin/php7/bin/php ./bin/composer.phar install --prefer-dist --no-interaction
 
-      - name: Print the files in ./quiche-build/quiche
-        run: ls -la ./quiche-build/quiche
-
       - name: Run PHPUnit tests
         env:
           QUICHE_H_FILE: /home/runner/work/PHP-Quiche/PHP-Quiche/quiche-build/quiche/include/quiche.h

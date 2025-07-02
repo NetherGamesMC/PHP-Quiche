@@ -186,7 +186,7 @@ class QuicheServerSocket extends QuicheSocket{
         $connection = $this->bindings->quiche_accept(
             $dcid,
             $dcidLength,
-            $originalDcid === null ? null : $dcid->toString($dcidLength),
+            $originalDcid,
             $originalDcid === null ? 0 : strlen($originalDcid),
             $localAddr,
             QuicheBindings::sizeof($localAddr[0]),

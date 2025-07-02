@@ -264,9 +264,11 @@ class Config{
     }
 
     public function setEnableActiveMigration(bool $v) : self{
-        $this->hasActiveMigration = $v;
+        if($this->hasActiveMigration !== $v){
+            $this->hasActiveMigration = $v;
 
-        $this->bindings->quiche_config_set_disable_active_migration($this->config, (int) !$v);
+            $this->bindings->quiche_config_set_disable_active_migration($this->config, (int) !$v);
+        }
 
         return $this;
     }

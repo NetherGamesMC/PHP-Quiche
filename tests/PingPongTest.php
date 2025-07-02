@@ -15,6 +15,9 @@ use NetherGames\Quiche\stream\BiDirectionalQuicheStream;
 use NetherGames\Quiche\stream\QuicheStream;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use function file_get_contents;
+use function is_file;
+use function unlink;
 
 require_once __DIR__ . "/../vendor/autoload.php";
 
@@ -460,6 +463,108 @@ class PingPongTest extends TestCase{
                 self::assertTrue($data === "pong", "Pong should arrive as pong");
                 self::assertTrue($newClientConnection->isResumed(), "Connection should be resumed now");
                 $writer->write("ping");
+                $arrivalResumption = true;
+            });
+        });
+
+        while(!$arrival || !$sendingSucceeded || !$arrivalResumption || !$clientClosed){
+            $client->tick();
+            $server->tick();
+            $newClient?->tick();
+        }
+
+        $server->close(false, 0, "Bye");
+    }
+
+    public function test0RTTResumption() : void{
+        $arrival = false;
+        $arrivalResumption = false;
+        $clientClosed = false;
+        $sendingSucceeded = false;
+        $resumedSession = false;
+        $newClient = null;
+
+        $server = self::createServer(function(QuicheConnection $connection, ?QuicheStream $stream) use (&$server, &$resumedSession, &$sendingSucceeded) : void{
+            if($stream instanceof BiDirectionalQuicheStream){
+                $writer = $stream->setupWriter();
+
+                $stream->setOnDataArrival(function(string $data) use ($writer, $connection, &$server, &$resumedSession, &$sendingSucceeded) : void{
+                    self::assertTrue($data === "ping", "Ping should arrive as ping");
+
+                    if($resumedSession){
+                        self::assertTrue($connection->isResumed(), "Connection should be resumed");
+                        $writer->writeWithPromise("pong")->onResult(function() use ($connection, &$sendingSucceeded) : void{
+                            $connection->close(false, 0, "Bye");
+                            $sendingSucceeded = true;
+                        });
+                    }else{
+                        self::assertFalse($connection->isResumed(), "Connection should not be resumed yet");
+                        $writer->writeWithPromise("pong")->onResult(function() use ($connection, &$resumedSession) : void{
+                            $resumedSession = true;
+                            $connection->close(false, 0, "Bye");
+                        });
+                    }
+                });
+            }
+        });
+
+        $client = self::createClient(function(QuicheConnection $connection, QuicheStream $stream) : void{
+            self::fail("Client should not receive a stream");
+        });
+
+        self::configureClient($client);
+        self::configureServer($server);
+
+        $server->getConfig()->enableEarlyData();
+
+        $client->connect();
+        $clientConnection = $client->getConnection();
+        $stream = $clientConnection->openBidirectionalStream();
+        $writer = $stream->setupWriter();
+        $writer->write("ping");
+
+        $stream->setOnDataArrival(function(string $data) use ($clientConnection, &$arrival) : void{
+            self::assertTrue($data === "pong", "Pong should arrive as pong");
+            self::assertFalse($clientConnection->isResumed(), "Connection should not be resumed yet");
+            $arrival = true;
+        });
+
+        $clientConnection->setPeerCloseCallback(function(bool $applicationError, int $error, ?string $reason) use ($client, &$arrivalResumption, &$newClient, &$clientClosed, $clientConnection) : void{
+            $newClient = self::createClient(function(QuicheConnection $connection, QuicheStream $stream) : void{
+                self::fail("Client should not receive a stream");
+            });
+
+            self::configureClient($newClient);
+
+            $newClient->getConfig()->enableEarlyData();
+
+            $newClient->connect($clientConnection->getSession());
+
+            $newClientConnection = $newClient->getConnection();
+            $path = $newClientConnection->setQLogPath(__DIR__, "client", "qlog", "client");
+            $newClientConnection->setPeerCloseCallback(function(bool $applicationError, int $error, ?string $reason) use (&$clientClosed, $path) : void{
+                self::assertTrue($applicationError === false, "Application error should be false");
+                self::assertTrue($error === 0, "Error should be 0");
+                self::assertTrue($reason === "Bye", "Reason should be Bye");
+                $clientClosed = true;
+
+                if(is_file($path)){
+                    $contents = file_get_contents($path);
+
+                    self::assertStringContainsString('"packet_type":"0RTT"', $contents, "QLog should contain 0RTT packets");
+                    self::assertStringNotContainsString('{"packet_type":"1RTT","packet_number":3}', $contents, "QLog should not contain 1RTT frame with packet number 3");
+
+                    unlink($path);
+                }
+            });
+
+            $stream = $newClientConnection->openBidirectionalStream();
+            $writer = $stream->setupWriter();
+            $writer->write("ping");
+
+            $stream->setOnDataArrival(function(string $data) use ($newClientConnection, $writer, &$arrivalResumption) : void{
+                self::assertTrue($data === "pong", "Pong should arrive as pong");
+                self::assertTrue($newClientConnection->isResumed(), "Connection should be resumed now");
                 $arrivalResumption = true;
             });
         });

@@ -373,4 +373,9 @@ class Config{
     public function isStatelessRetryEnabled() : bool{
         return $this->enableStatelessRetry;
     }
+
+    public function enableEarlyData() : self{
+        $this->bindings->quiche_config_enable_early_data($this->config);
+        return $this;
+    }
 }

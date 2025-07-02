@@ -591,4 +591,8 @@ class QuicheConnection{
     public function getStats() : QuicheStats{
         return QuicheStats::getConnectionStats($this->bindings, $this->connection);
     }
+
+    public function isResumed() : bool{
+        return $this->bindings->quiche_conn_is_resumed($this->connection) === 1;
+    }
 }

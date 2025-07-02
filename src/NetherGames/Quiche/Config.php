@@ -17,6 +17,7 @@ class Config{
     private int $pingInterval = 0;
     private int $maxIdleTimeout = 0;
     private bool $hasActiveMigration = true;
+    private bool $enableStatelessRetry = false;
 
     public function __construct(private readonly QuicheFFI $bindings){
         $config = $this->bindings->quiche_config_new(QuicheBinding::QUICHE_PROTOCOL_VERSION);
@@ -360,5 +361,14 @@ class Config{
 
     public function hasActiveMigration() : bool{
         return $this->hasActiveMigration;
+    }
+
+    public function enableStatelessRetry(bool $v) : self{
+        $this->enableStatelessRetry = $v;
+        return $this;
+    }
+
+    public function isStatelessRetryEnabled() : bool{
+        return $this->enableStatelessRetry;
     }
 }

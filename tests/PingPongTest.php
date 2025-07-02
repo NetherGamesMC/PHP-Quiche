@@ -44,6 +44,7 @@ class PingPongTest extends TestCase{
 
     private static function configureBaseSocket(Config $socketConfig) : void{
         $socketConfig->discoverPMTUD(true);
+        $socketConfig->setEnableActiveMigration(false);
         $socketConfig->enableBidirectionalStreams();
         $socketConfig->setApplicationProtos(["pingpong"]);
         $socketConfig->setInitialMaxData(10000000);

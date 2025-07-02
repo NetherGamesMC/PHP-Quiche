@@ -142,40 +142,52 @@ class QuicheServerSocket extends QuicheSocket{
 
         /** @var string $dcidString */
         $dcidString = $dcid->toString($dcidLength);
-        $tokenPrefix = "quiche" . $peerAddr->getSocketAddress();
-        if($tokenLength === 0){ // stateless retry
-            $mintToken = $tokenPrefix . $dcidString;
 
-            $written = $this->bindings->quiche_retry(
-                $scid,
-                $scidLength,
-                $dcid,
-                $dcidLength,
-                random_bytes($scidLength = QuicheBindings::QUICHE_MAX_CONN_ID_LEN),
-                $scidLength,
-                $mintToken,
-                strlen($mintToken),
-                $version,
-                $this->tempBuffer,
-                $this->config->getMaxSendUdpPayloadSize()
-            );
+        if($this->config->isStatelessRetryEnabled()){
+            $tokenPrefix = "quiche" . $peerAddr->getSocketAddress(); // todo: make cryptographically secure
 
-            socket_sendto($socket, $this->tempBuffer->toString($written), $written, 0, $peerAddr->getAddress(), $peerAddr->getPort());
+            if($tokenLength === 0){ // stateless retry
+                $mintToken = $tokenPrefix . $dcidString;
 
-            return null;
-        }
+                $written = $this->bindings->quiche_retry(
+                    $scid,
+                    $scidLength,
+                    $dcid,
+                    $dcidLength,
+                    random_bytes($scidLength = QuicheBindings::QUICHE_MAX_CONN_ID_LEN),
+                    $scidLength,
+                    $mintToken,
+                    strlen($mintToken),
+                    $version,
+                    $this->tempBuffer,
+                    $this->config->getMaxSendUdpPayloadSize()
+                );
 
-        if(!str_starts_with($token->toString($tokenLength), $tokenPrefix)){
-            return null; // invalid token
+                socket_sendto($socket, $this->tempBuffer->toString($written), $written, 0, $peerAddr->getAddress(), $peerAddr->getPort());
+
+                return null;
+            }
+
+            if(!str_starts_with($token->toString($tokenLength), $tokenPrefix)){ // todo: make cryptographically secure
+                return null; // invalid token
+            }
+
+            if($dcidLength !== QuicheBindings::QUICHE_MAX_CONN_ID_LEN){
+                return null; // invalid DCID length
+            }
+
+            $originalDcid = substr($token->toString($tokenLength), strlen($tokenPrefix));
+        }else{
+            $originalDcid = null;
         }
 
         $localAddr = $this->udpSocketAddresses[$socketId]->getSocketAddressPtr();
-        $originalDcid = substr($token->toString($tokenLength), strlen($tokenPrefix));
+
         $connection = $this->bindings->quiche_accept(
             $dcid,
             $dcidLength,
-            $originalDcid,
-            strlen($originalDcid),
+            $originalDcid === null ? null : $dcid->toString($dcidLength),
+            $originalDcid === null ? 0 : strlen($originalDcid),
             $localAddr,
             QuicheBindings::sizeof($localAddr[0]),
             $peerQuicheAddr = $peerAddr->getSocketAddressPtr(),

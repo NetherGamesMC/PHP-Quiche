@@ -1,0 +1,53 @@
+name: Build
+
+on: push
+
+jobs:
+  phpunit:
+    name: PHPUnit tests
+    runs-on: ubuntu-22.04
+    env:
+      QUICHE_VERSION: 0.24.4
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Quiche
+        id: cache-quiche
+        uses: actions/cache@v4
+        with:
+          path: quiche-build
+          key: "quiche-${{ env.QUICHE_VERSION }}"
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        if: steps.cache-quiche.outputs.cache-hit != 'true'
+      - name: build-quiche
+        if: steps.cache-quiche.outputs.cache-hit != 'true'
+        run: git clone --recursive https://github.com/cloudflare/quiche --branch "$QUICHE_VERSION" quiche-build && cd quiche-build && cargo build --release --features ffi
+
+      - name: Download PHP Release
+        uses: dsaltares/fetch-gh-release-asset@1.1.2
+        with:
+          file: PHP-8.3-Linux-x86_64-PM5.tar.gz
+          repo: NetherGamesMC/php-build-scripts
+          version: "tags/pm5-php-8.3-latest"
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Unpack PHP Release
+        run: tar -xzvf PHP-8.3-Linux-x86_64-PM5.tar.gz
+
+      - name: Install libffi7
+        run: sudo apt update && sudo apt install -y --no-install-recommends libffi7
+
+      - name: Download Composer
+        run: curl -o ./bin/composer.phar "https://getcomposer.org/composer-stable.phar"
+      - name: Install Composer dependencies
+        run: ./bin/php7/bin/php ./bin/composer.phar install --prefer-dist --no-interaction
+
+      - name: Print the files in ./quiche-build/quiche
+        run: ls -la ./quiche-build/quiche
+
+      - name: Run PHPUnit tests
+        env:
+          QUICHE_H_FILE: /home/runner/work/PHP-Quiche/PHP-Quiche/quiche-build/quiche/include/quiche.h
+          QUICHE_PATH: /home/runner/work/PHP-Quiche/PHP-Quiche/quiche-build/target/release/libquiche.so
+        run: ./bin/php7/bin/php ./vendor/bin/phpunit --bootstrap vendor/autoload.php --fail-on-warning tests

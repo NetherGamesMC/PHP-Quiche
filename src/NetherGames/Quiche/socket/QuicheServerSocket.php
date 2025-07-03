@@ -80,7 +80,7 @@ class QuicheServerSocket extends QuicheSocket{
 
             $peerAddress = new SocketAddress($peerAddr, $peerPort);
             $connection = $this->connections[$dcidString = $dcid->toString($dcidLength)] ?? null;
-            if($connection === null){ // connection is new
+            if($connection === null && $type === 1){ // connection is new
                 $connection = $this->createConnection(
                     $peerAddress,
                     $socketId,

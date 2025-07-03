@@ -3,14 +3,15 @@
 namespace NetherGames\Quiche\socket;
 
 use Closure;
+use InvalidArgumentException;
 use NetherGames\Quiche\bindings\Quiche as QuicheBindings;
 use NetherGames\Quiche\bindings\uint8_t_ptr;
 use NetherGames\Quiche\Config;
+use NetherGames\Quiche\PacketType;
 use NetherGames\Quiche\QuicheConnection;
 use NetherGames\Quiche\SocketAddress;
 use Socket;
 use function array_filter;
-use function bin2hex;
 use function random_bytes;
 use function socket_recvfrom;
 use function socket_sendto;
@@ -32,7 +33,7 @@ class QuicheServerSocket extends QuicheSocket{
         parent::__construct($acceptCallback, $enableDebugLogging);
 
         if(empty($address)){
-            throw new \InvalidArgumentException("At least one address must be provided for the server socket.");
+            throw new InvalidArgumentException("At least one address must be provided for the server socket.");
         }
 
         $this->registerUDPSockets($address);
@@ -80,7 +81,7 @@ class QuicheServerSocket extends QuicheSocket{
 
             $peerAddress = new SocketAddress($peerAddr, $peerPort);
             $connection = $this->connections[$dcidString = $dcid->toString($dcidLength)] ?? null;
-            if($connection === null && $type === 1){ // connection is new
+            if($connection === null && $type === PacketType::INITIAL->value){
                 $connection = $this->createConnection(
                     $peerAddress,
                     $socketId,
@@ -134,12 +135,13 @@ class QuicheServerSocket extends QuicheSocket{
             return null;
         }
 
-        /** @var string $dcidString */
-        $dcidString = $dcid->toString($dcidLength);
+        $newScid = random_bytes($newScidLength = QuicheBindings::QUICHE_MAX_CONN_ID_LEN);
 
         if($this->config->isStatelessRetryEnabled()){
             $tokenPrefix = "quiche" . $peerAddr->getSocketAddress(); // todo: make cryptographically secure
 
+            /** @var string $dcidString */
+            $dcidString = $dcid->toString($dcidLength);
             if($tokenLength === 0){ // stateless retry
                 $mintToken = $tokenPrefix . $dcidString;
 
@@ -148,8 +150,8 @@ class QuicheServerSocket extends QuicheSocket{
                     $scidLength,
                     $dcid,
                     $dcidLength,
-                    random_bytes($scidLength = QuicheBindings::QUICHE_MAX_CONN_ID_LEN),
-                    $scidLength,
+                    $newScid,
+                    $newScidLength,
                     $mintToken,
                     strlen($mintToken),
                     $version,
@@ -166,10 +168,12 @@ class QuicheServerSocket extends QuicheSocket{
                 return null; // invalid token
             }
 
-            if($dcidLength !== QuicheBindings::QUICHE_MAX_CONN_ID_LEN){
+            if($newScidLength !== $dcidLength){
                 return null; // invalid DCID length
             }
 
+            $newScid = $dcidString;
+            $newScidLength = $dcidLength;
             $originalDcid = substr($token->toString($tokenLength), strlen($tokenPrefix));
         }else{
             $originalDcid = null;
@@ -179,8 +183,8 @@ class QuicheServerSocket extends QuicheSocket{
         $localSocketAddr = $localAddr->getSocketAddressPtr();
 
         $connection = $this->bindings->quiche_accept(
-            $dcid,
-            $dcidLength,
+            $newScid,
+            $newScidLength,
             $originalDcid,
             $originalDcid === null ? 0 : strlen($originalDcid),
             $localSocketAddr,
@@ -206,13 +210,11 @@ class QuicheServerSocket extends QuicheSocket{
             $socketId
         );
 
-        $this->connections[$dcidString] = $connection;
+        $this->connections[$newScid] = $connection;
         ($this->acceptCallback)($connection, null); // new connection
 
         return $connection;
     }
-
-
 
     public function getConnection(string $dcid) : ?QuicheConnection{
         return $this->connections[$dcid] ?? null;

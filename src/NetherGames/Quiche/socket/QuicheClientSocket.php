@@ -20,7 +20,7 @@ class QuicheClientSocket extends QuicheSocket{
     private ?QuicheConnection $connection = null;
 
     /**
-     * @param Closure $acceptCallback function(QuicheConnection $connection, QuicheStream $stream) : void
+     * @param Closure         $acceptCallback function(QuicheConnection $connection, QuicheStream $stream) : void
      * @param SocketAddress[] $address
      */
     public function __construct(

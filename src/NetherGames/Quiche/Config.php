@@ -358,7 +358,7 @@ class Config{
         return $this->pingInterval > 0;
     }
 
-    public function discoverPMTUD(bool $v): void{
+    public function discoverPMTUD(bool $v) : void{
         $this->bindings->quiche_config_discover_pmtu($this->config, (int) $v);
     }
 
@@ -368,6 +368,7 @@ class Config{
 
     public function enableStatelessRetry(bool $v) : self{
         $this->enableStatelessRetry = $v;
+
         return $this;
     }
 
@@ -377,6 +378,7 @@ class Config{
 
     public function enableEarlyData() : self{
         $this->bindings->quiche_config_enable_early_data($this->config);
+
         return $this;
     }
 }

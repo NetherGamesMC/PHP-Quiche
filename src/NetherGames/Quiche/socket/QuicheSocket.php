@@ -14,9 +14,16 @@ use NetherGames\Quiche\QuicheConnection;
 use NetherGames\Quiche\SocketAddress;
 use RuntimeException;
 use Socket;
+use function array_values;
+use function socket_bind;
 use function socket_close;
+use function socket_create;
+use function socket_last_error;
 use function socket_select;
+use function socket_strerror;
 use function spl_object_id;
+use const SOCK_DGRAM;
+use const SOL_UDP;
 
 abstract class QuicheSocket{
     public const SEND_BUFFER_SIZE = 65535;
@@ -34,6 +41,11 @@ abstract class QuicheSocket{
     private array $nonWritableCallbacks = [];
     /** @var array<int, Closure> */
     private array $socketCallbacks = [];
+
+    /** @var array<int, SocketAddress> */
+    private array $udpSocketAddresses = [];
+    /** @var array<string, int> */
+    private array $udpSocketIds = [];
 
     private bool $closed = false;
 
@@ -62,7 +74,31 @@ abstract class QuicheSocket{
      */
     abstract public function removeSCID(string $scid) : void;
 
-    protected function setupSocketSettings(Socket $socket) : void{
+    /**
+     * @param SocketAddress[] $address
+     */
+    protected function registerUDPSockets(array $address) : void{
+        foreach($address as $socketAddress){
+            $socket = socket_create($socketAddress->getSocketFamily(), SOCK_DGRAM, SOL_UDP);
+
+            if($socket === false || !socket_bind($socket, $socketAddress->getAddress(), $socketAddress->getPort())){
+                $errno = socket_last_error();
+                $errstr = socket_strerror($errno);
+                throw new RuntimeException("Failed to bind to socket: $errstr ($errno)");
+            }
+
+            $this->setupSocketSettings($socket);
+
+            $this->udpSocketAddresses[$socketId = spl_object_id($socket)] = $socketAddress;
+            $this->udpSocketIds[$socketAddress->getSocketAddress()] = $socketId;
+
+            $this->registerSocket($socket, function() use ($socketId, $socket){
+                $this->readSocket($socketId, $socket);
+            });
+        }
+    }
+
+    private function setupSocketSettings(Socket $socket) : void{
         if(php_uname('s') !== 'Darwin'){
             if(!socket_set_option($socket, SOL_SOCKET, SO_SNDBUF, 8 * 1024 * 1024) || !socket_set_option($socket, SOL_SOCKET, SO_RCVBUF, 8 * 1024 * 1024)){
                 throw new RuntimeException("Failed to set option on socket: " . socket_strerror(socket_last_error($socket)));
@@ -70,12 +106,19 @@ abstract class QuicheSocket{
         }
     }
 
-    protected function getLocalAddress(Socket $socket) : SocketAddress{
-        if(socket_getsockname($socket, $localAddress, $localPort) === false){
-            throw new RuntimeException("Failed to get local address");
-        }
+    protected function getLocalAddressBySocketId(int $socketId) : SocketAddress{
+        return $this->udpSocketAddresses[$socketId] ?? throw new InvalidArgumentException("Invalid socket ID: $socketId");
+    }
 
-        return new SocketAddress($localAddress, $localPort);
+    protected function getRandomSocketId() : int{
+        return array_values($this->udpSocketIds)[array_rand($this->udpSocketIds)];
+    }
+
+    /**
+     * @return array<int>
+     */
+    public function getSocketIds() : array{
+        return array_values($this->udpSocketIds);
     }
 
     protected function onClosed() : void{
@@ -168,6 +211,10 @@ abstract class QuicheSocket{
         $this->socketCallbacks[$socketId] = $callback;
 
         return true;
+    }
+
+    public function getSocketIdBySocketAddress(SocketAddress $socketAddress) : int{
+        return $this->udpSocketIds[$socketAddress->getSocketAddress()];
     }
 
     public function tick() : void{

@@ -229,6 +229,10 @@ class QuicheConnection{
     }
 
     public function probePath(SocketAddress $from = null, SocketAddress $to = null) : bool{
+        if($this->isServer()){
+            throw new RuntimeException("Path probing is not supported on server connections");
+        }
+
         $from = ($from ?? $this->localAddress);
         $to = ($to ?? $this->peerAddress);
 
@@ -262,6 +266,15 @@ class QuicheConnection{
                         SocketAddress::createFromFFI($local),
                         SocketAddress::createFromFFI($peer)
                     ));
+
+                    $this->bindings->quiche_conn_probe_path(
+                        $this->connection,
+                        $local,
+                        QuicheBindings::sizeof($local[0]),
+                        $peer,
+                        QuicheBindings::sizeof($peer[0]),
+                        [&$seq]
+                    );
                     break;
                 case QuicheBindings::QUICHE_PATH_EVENT_VALIDATED:
                     $this->bindings->quiche_path_event_validated($event, [&$from], [&$fromLength], [&$to], [&$toLength]);
@@ -358,8 +371,8 @@ class QuicheConnection{
         return socket_sendto($this->getPHPSocket(), $data, $length, 0, $this->peerAddress->getAddress(), $this->peerAddress->getPort());
     }
 
-    public function hasOutgoingQueue(int $socketId = null) : bool{
-        return ($socketId === null || $socketId === $this->socketId) && $this->sendBuffer !== null;
+    public function hasOutgoingQueue(int $socketId) : bool{
+        return $socketId === $this->socketId && $this->sendBuffer !== null;
     }
 
     /**
@@ -431,10 +444,7 @@ class QuicheConnection{
 
                 $this->localAddress = SocketAddress::createFromFFI($this->sendInfo->from);
                 $this->peerAddress = SocketAddress::createFromFFI($this->sendInfo->to);
-
-                if($this->socket instanceof QuicheServerSocket){
-                    $this->socketId = $this->socket->getSocketIdBySocketAddress($this->localAddress);
-                }
+                $this->socketId = $this->socket->getSocketIdBySocketAddress($this->localAddress);
 
                 $writtenLength = $this->sendToSocket($data = $this->tempBuffer->toString($written), $written);
 

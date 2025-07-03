@@ -8,28 +8,18 @@ use NetherGames\Quiche\bindings\uint8_t_ptr;
 use NetherGames\Quiche\Config;
 use NetherGames\Quiche\QuicheConnection;
 use NetherGames\Quiche\SocketAddress;
-use RuntimeException;
 use Socket;
 use function array_filter;
+use function bin2hex;
 use function random_bytes;
-use function socket_create;
-use function socket_last_error;
 use function socket_recvfrom;
 use function socket_sendto;
-use function socket_strerror;
-use function spl_object_id;
 use function str_starts_with;
 use function strlen;
 use function substr;
 use const MSG_DONTWAIT;
 
 class QuicheServerSocket extends QuicheSocket{
-
-
-    /** @var array<int, SocketAddress> */
-    private array $udpSocketAddresses = [];
-    /** @var array<string, int> */
-    private array $udpSocketIds = [];
 
     /** @var array<string, QuicheConnection> */
     private array $connections = [];
@@ -40,6 +30,10 @@ class QuicheServerSocket extends QuicheSocket{
      */
     public function __construct(array $address, Closure $acceptCallback, bool $enableDebugLogging = false){
         parent::__construct($acceptCallback, $enableDebugLogging);
+
+        if(empty($address)){
+            throw new \InvalidArgumentException("At least one address must be provided for the server socket.");
+        }
 
         $this->registerUDPSockets($address);
     }
@@ -60,7 +54,7 @@ class QuicheServerSocket extends QuicheSocket{
         unset($this->connections[$scid]);
     }
 
-    private function readSocket(int $socketId, Socket $socket) : void{
+    protected function readSocket(int $socketId, Socket $socket) : void{
         while(($bufferLength = socket_recvfrom($socket, $buffer, $this->config->getMaxRecvUdpPayloadSize(), MSG_DONTWAIT, $peerAddr, $peerPort)) !== false){
             $scid = uint8_t_ptr::array($scidLength = QuicheBindings::QUICHE_MAX_CONN_ID_LEN);
             $dcid = uint8_t_ptr::array($dcidLength = QuicheBindings::QUICHE_MAX_CONN_ID_LEN);
@@ -104,7 +98,7 @@ class QuicheServerSocket extends QuicheSocket{
             if(!$connection?->handleIncoming(
                 $buffer,
                 $bufferLength,
-                $this->udpSocketAddresses[$socketId],
+                $this->getLocalAddressBySocketId($socketId),
                 $peerAddress
             )){
                 $this->removeConnection($dcidString);
@@ -181,15 +175,16 @@ class QuicheServerSocket extends QuicheSocket{
             $originalDcid = null;
         }
 
-        $localAddr = $this->udpSocketAddresses[$socketId]->getSocketAddressPtr();
+        $localAddr = $this->getLocalAddressBySocketId($socketId);
+        $localSocketAddr = $localAddr->getSocketAddressPtr();
 
         $connection = $this->bindings->quiche_accept(
             $dcid,
             $dcidLength,
             $originalDcid,
             $originalDcid === null ? 0 : strlen($originalDcid),
-            $localAddr,
-            QuicheBindings::sizeof($localAddr[0]),
+            $localSocketAddr,
+            QuicheBindings::sizeof($localSocketAddr[0]),
             $peerQuicheAddr = $peerAddr->getSocketAddressPtr(),
             QuicheBindings::sizeof($peerQuicheAddr[0]),
             $this->config->getBinding(),
@@ -206,7 +201,7 @@ class QuicheServerSocket extends QuicheSocket{
             $this->config,
             $connection,
             $this->acceptCallback,
-            $this->getLocalAddress($socket),
+            $localAddr,
             $peerAddr,
             $socketId
         );
@@ -217,33 +212,7 @@ class QuicheServerSocket extends QuicheSocket{
         return $connection;
     }
 
-    /**
-     * @param SocketAddress[] $address
-     */
-    private function registerUDPSockets(array $address) : void{
-        foreach($address as $socketAddress){
-            $socket = socket_create($socketAddress->getSocketFamily(), SOCK_DGRAM, SOL_UDP);
 
-            if($socket === false || !socket_bind($socket, $socketAddress->getAddress(), $socketAddress->getPort())){
-                $errno = socket_last_error();
-                $errstr = socket_strerror($errno);
-                throw new RuntimeException("Failed to bind to socket: $errstr ($errno)");
-            }
-
-            $this->setupSocketSettings($socket);
-
-            $this->udpSocketAddresses[$socketId = spl_object_id($socket)] = $socketAddress;
-            $this->udpSocketIds[$socketAddress->getSocketAddress()] = $socketId;
-
-            $this->registerSocket($socket, function() use ($socketId, $socket){
-                $this->readSocket($socketId, $socket);
-            });
-        }
-    }
-
-    public function getSocketIdBySocketAddress(SocketAddress $socketAddress) : int{
-        return $this->udpSocketIds[$socketAddress->getSocketAddress()];
-    }
 
     public function getConnection(string $dcid) : ?QuicheConnection{
         return $this->connections[$dcid] ?? null;

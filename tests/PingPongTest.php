@@ -292,6 +292,97 @@ class PingPongTest extends TestCase{
         $server->close(false, 0, "Bye");
     }
 
+    public function testClientMigration() : void{
+        $done = false;
+        $arrival = false;
+        $streamClosedClient = false;
+        $streamClosedServer = false;
+        $streamWriterServerDisabled = false;
+        $sendingSucceeded = false;
+        $pongsCounted = 0;
+        $serverConnection = null;
+
+        $server = null;
+        $server = self::createServer(function(QuicheConnection $connection, ?QuicheStream $stream) use (&$server, &$serverConnection, &$sendingSucceeded, &$pongsCounted, &$streamClosedServer, &$streamWriterServerDisabled) : void{
+            if($stream instanceof BiDirectionalQuicheStream){
+                $writer = $stream->setupWriter();
+
+                $stream->addShutdownCallback(function(bool $peerClosed) use ($writer, &$sendingSucceeded, &$pongsCounted, &$streamClosedServer) : void{
+                    self::assertTrue(!$peerClosed, "Peer closed should be false on server");
+                    $streamClosedServer = self::checkWriter($writer);
+                });
+
+                $stream->setOnDataArrival(function(string $data) use ($writer, &$server, &$sendingSucceeded, &$pongsCounted, &$streamWriterServerDisabled) : void{
+                    self::assertTrue($data === "ping", "Ping should arrive as ping");
+
+                    $pongsCounted++;
+                    $writer->writeWithPromise("pong")->onResult(function() use (&$sendingSucceeded) : void{
+                        $sendingSucceeded = true;
+                    });
+
+                    if($pongsCounted === 30){
+                        $server->close(false, 0, "Bye");
+                        $streamWriterServerDisabled = self::checkWriter($writer);
+                    }
+                });
+            }else if($stream === null){
+                $serverConnection = $connection;
+                $connection->setPeerCloseCallback(function(bool $applicationError, int $error, ?string $reason) : void{
+                    self::fail("Server should not receive a shutdown callback");
+                });
+            }
+        });
+
+        $client = self::createClient(function(QuicheConnection $connection, QuicheStream $stream) : void{
+            self::fail("Client should not receive a stream");
+        });
+
+        self::configureClient($client);
+        self::configureServer($server);
+
+        $client->connect();
+        $clientConnection = $client->getConnection();
+        $clientConnection->registerEventHandler(function(Event $event) : void{
+            if($event instanceof ValidatedPathEvent){
+                $event->migrate();
+            }
+        });
+        $stream = $clientConnection->openBidirectionalStream();
+        $writer = $stream->setupWriter();
+        $writer->write("ping");
+
+        $stream->addShutdownCallback(function(bool $peerClosed) use ($clientConnection, $writer, &$streamClosedClient) : void{
+            self::assertTrue($peerClosed, "Peer closed should be false on server");
+            $streamClosedClient = self::checkWriter($writer);
+        });
+
+        $stream->setOnDataArrival(function(string $data) use ($clientConnection, $writer, &$arrival) : void{
+            self::assertTrue($data === "pong", "Pong should arrive as pong");
+            if(!$arrival){
+                $clientConnection->probePath(to: new SocketAddress("127.0.0.1", 19134));
+            }
+            $writer->write("ping");
+            $arrival = true;
+        });
+
+        $clientConnection->setPeerCloseCallback(function(bool $applicationError, int $error, ?string $reason) use (&$done, $writer) : void{
+            self::assertTrue($applicationError === false, "Application error should be false");
+            self::assertTrue($error === 0, "Error should be 0");
+            self::assertTrue($reason === "Bye", "Reason should be Bye");
+            $done = self::checkWriter($writer);
+        });
+
+        while(!$done || !$arrival || !$streamClosedClient || !$streamClosedServer || !$streamWriterServerDisabled || !$sendingSucceeded){
+            $client->tick();
+            $server->tick();
+        }
+
+        self::assertTrue($serverConnection->getLocalAddress()->getPort() === 19134, "Port should be 19134");
+        self::assertTrue($clientConnection->getPeerAddress()->getPort() === 19134, "Port should be 19134");
+
+        $server->close(false, 0, "Bye");
+    }
+
     public function testSessionResumption() : void{
         $arrival = false;
         $arrivalResumption = false;

@@ -42,7 +42,6 @@ class QuicheConnection{
     private ?string $sendBuffer = null;
 
     private quiche_send_info_ptr $sendInfo;
-    private uint8_t_ptr $scidRetirePtr;
 
     /** @var ?Closure $dgramReadClosure function(string $data, int $length) : int */
     private ?Closure $dgramWriteClosure = null;
@@ -93,7 +92,6 @@ class QuicheConnection{
         $this->nextUnidirectionalStreamId = $isClient ? -2 : -1;
         $this->nextBidirectionalStreamId = $isClient ? -4 : -3;
         $this->sendInfo = quiche_send_info_ptr::array();
-        $this->scidRetirePtr = uint8_t_ptr::array(QuicheBindings::QUICHE_MAX_CONN_ID_LEN);
     }
 
     public function isServer() : bool{
@@ -208,8 +206,10 @@ class QuicheConnection{
     }
 
     private function handleSCIDs() : void{
-        while(($this->bindings->quiche_conn_retired_scid_next($this->connection, [&$this->scidRetirePtr], [&$length])) > 0){
-            $this->socket->removeSCID($this->scidRetirePtr->toString($length));
+        /** @var uint8_t_ptr $scidRetirePtr */
+        /** @var int $length */
+        while(($this->bindings->quiche_conn_retired_scid_next($this->connection, [&$scidRetirePtr], [&$length])) > 0){
+            $this->socket->removeSCID($scidRetirePtr->toString($length));
         }
 
         while(($this->bindings->quiche_conn_scids_left($this->connection)) > 0){
@@ -255,7 +255,7 @@ class QuicheConnection{
     }
 
     private function handlePathEvents() : void{
-        while(($event = $this->bindings->quiche_conn_path_event_next($this->connection)) > 0){
+        while(($event = $this->bindings->quiche_conn_path_event_next($this->connection)) !== null){
             $type = $this->bindings->quiche_path_event_type($event);
 
             switch($type){
@@ -263,15 +263,15 @@ class QuicheConnection{
                     $this->bindings->quiche_path_event_new($event, [&$local], [&$localLength], [&$peer], [&$peerLength]);
 
                     $this->callEvent(new NewPathEvent(
-                        SocketAddress::createFromFFI($local),
-                        SocketAddress::createFromFFI($peer)
+                        $localAddress = SocketAddress::createFromFFI($local),
+                        $peerAddress = SocketAddress::createFromFFI($peer)
                     ));
 
                     $this->bindings->quiche_conn_probe_path(
                         $this->connection,
-                        $local,
+                        $local = $localAddress->getSocketAddressPtr(),
                         QuicheBindings::sizeof($local[0]),
-                        $peer,
+                        $peer = $peerAddress->getSocketAddressPtr(),
                         QuicheBindings::sizeof($peer[0]),
                         [&$seq]
                     );

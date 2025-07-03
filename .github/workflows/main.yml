@@ -1,4 +1,4 @@
-name: Build
+name: Unit Tests CI
 
 on: push
 
@@ -48,3 +48,6 @@ jobs:
           QUICHE_H_FILE: /home/runner/work/PHP-Quiche/PHP-Quiche/quiche-build/quiche/include/quiche.h
           QUICHE_PATH: /home/runner/work/PHP-Quiche/PHP-Quiche/quiche-build/target/release/libquiche.so
         run: ./bin/php7/bin/php ./vendor/bin/phpunit --bootstrap vendor/autoload.php --fail-on-warning tests
+
+      - name: Run PHPStan
+        run: ./bin/php7/bin/php vendor/bin/phpstan.phar analyze --no-progress

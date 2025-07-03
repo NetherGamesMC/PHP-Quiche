@@ -21,13 +21,8 @@ parameters:
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
 		-
-			message: "#^Comparison operation \"\\>\" between NetherGames\\\\Quiche\\\\bindings\\\\struct_quiche_path_event_ptr\\|null and 0 results in an error\\.$#"
-			count: 1
-			path: src/NetherGames/Quiche/QuicheConnection.php
-
-		-
-			message: "#^PHPDoc tag @var for variable \\$out contains unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
-			count: 1
+			message: "#^Call to static method array\\(\\) on an unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
+			count: 2
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
 		-
@@ -67,16 +62,16 @@ parameters:
 
 		-
 			message: "#^Undefined variable\\: \\$id$#"
-			count: 4
-			path: src/NetherGames/Quiche/QuicheConnection.php
-
-		-
-			message: "#^Undefined variable\\: \\$idLength$#"
 			count: 2
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
 		-
 			message: "#^Undefined variable\\: \\$isApp$#"
+			count: 2
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Undefined variable\\: \\$length$#"
 			count: 2
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
@@ -106,16 +101,6 @@ parameters:
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
 		-
-			message: "#^Undefined variable\\: \\$out$#"
-			count: 2
-			path: src/NetherGames/Quiche/QuicheConnection.php
-
-		-
-			message: "#^Undefined variable\\: \\$outLength$#"
-			count: 2
-			path: src/NetherGames/Quiche/QuicheConnection.php
-
-		-
 			message: "#^Undefined variable\\: \\$peerLength$#"
 			count: 5
 			path: src/NetherGames/Quiche/QuicheConnection.php
@@ -131,8 +116,13 @@ parameters:
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
 		-
+			message: "#^Undefined variable\\: \\$scidRetirePtr$#"
+			count: 2
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
 			message: "#^Undefined variable\\: \\$seq$#"
-			count: 4
+			count: 5
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
 		-
@@ -146,13 +136,8 @@ parameters:
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
 		-
-			message: "#^Undefined variable\\: \\$traceId$#"
-			count: 2
-			path: src/NetherGames/Quiche/QuicheConnection.php
-
-		-
-			message: "#^Undefined variable\\: \\$traceIdLength$#"
-			count: 2
+			message: "#^Variable \\$length in PHPDoc tag @var does not exist\\.$#"
+			count: 1
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
 		-
@@ -161,13 +146,13 @@ parameters:
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
 		-
-			message: "#^Variable \\$out in PHPDoc tag @var does not exist\\.$#"
-			count: 1
+			message: "#^Variable \\$peer might not be defined\\.$#"
+			count: 10
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
 		-
-			message: "#^Variable \\$peer might not be defined\\.$#"
-			count: 10
+			message: "#^Variable \\$scidRetirePtr in PHPDoc tag @var does not exist\\.$#"
+			count: 1
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
 		-
@@ -206,12 +191,12 @@ parameters:
 			path: src/NetherGames/Quiche/socket/QuicheServerSocket.php
 
 		-
-			message: "#^Undefined variable\\: \\$type$#"
-			count: 1
+			message: "#^Undefined variable\\: \\$version$#"
+			count: 2
 			path: src/NetherGames/Quiche/socket/QuicheServerSocket.php
 
 		-
-			message: "#^Undefined variable\\: \\$version$#"
+			message: "#^Variable \\$type might not be defined\\.$#"
 			count: 2
 			path: src/NetherGames/Quiche/socket/QuicheServerSocket.php
 
@@ -221,7 +206,17 @@ parameters:
 			path: src/NetherGames/Quiche/socket/QuicheSocket.php
 
 		-
+			message: "#^Call to an undefined method NetherGames\\\\Quiche\\\\socket\\\\QuicheSocket\\:\\:readSocket\\(\\)\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/socket/QuicheSocket.php
+
+		-
 			message: "#^Call to static method array\\(\\) on an unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/socket/QuicheSocket.php
+
+		-
+			message: "#^Offset string does not exist on array\\<int, int\\>\\.$#"
 			count: 1
 			path: src/NetherGames/Quiche/socket/QuicheSocket.php
 
@@ -271,6 +266,11 @@ parameters:
 			path: src/NetherGames/Quiche/stream/BiDirectionalQuicheStream.php
 
 		-
+			message: "#^Undefined variable\\: \\$outErrorCode$#"
+			count: 3
+			path: src/NetherGames/Quiche/stream/BiDirectionalQuicheStream.php
+
+		-
 			message: "#^Call to method toString\\(\\) on an unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
 			count: 1
 			path: src/NetherGames/Quiche/stream/ReadableQuicheStream.php
@@ -289,3 +289,13 @@ parameters:
 			message: "#^Undefined variable\\: \\$fin$#"
 			count: 2
 			path: src/NetherGames/Quiche/stream/ReadableQuicheStream.php
+
+		-
+			message: "#^Undefined variable\\: \\$outErrorCode$#"
+			count: 1
+			path: src/NetherGames/Quiche/stream/ReadableQuicheStream.php
+
+		-
+			message: "#^Undefined variable\\: \\$outErrorCode$#"
+			count: 2
+			path: src/NetherGames/Quiche/stream/WriteableQuicheStream.php

@@ -26,7 +26,6 @@ class Config{
         }
 
         $this->config = $config;
-        $this->setEnableActiveMigration(false);
     }
 
     public function loadCertChainFromFile(string $path) : self{
@@ -264,7 +263,7 @@ class Config{
         return $this;
     }
 
-    private function setEnableActiveMigration(bool $v) : self{
+    public function setEnableActiveMigration(bool $v) : self{
         if($this->hasActiveMigration !== $v){
             $this->hasActiveMigration = $v;
 

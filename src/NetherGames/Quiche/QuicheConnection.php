@@ -8,6 +8,7 @@ use NetherGames\Quiche\bindings\quiche_send_info_ptr;
 use NetherGames\Quiche\bindings\QuicheFFI;
 use NetherGames\Quiche\bindings\struct_quiche_conn_ptr;
 use NetherGames\Quiche\bindings\uint8_t_ptr;
+use NetherGames\Quiche\bindings\uint8_t_ptr_ptr;
 use NetherGames\Quiche\event\ClosedPathEvent;
 use NetherGames\Quiche\event\Event;
 use NetherGames\Quiche\event\FailedValidationPathEvent;
@@ -42,6 +43,7 @@ class QuicheConnection{
     private ?string $sendBuffer = null;
 
     private quiche_send_info_ptr $sendInfo;
+    private uint8_t_ptr_ptr $scidRetirePtr;
 
     /** @var ?Closure $dgramReadClosure function(string $data, int $length) : int */
     private ?Closure $dgramWriteClosure = null;
@@ -92,6 +94,7 @@ class QuicheConnection{
         $this->nextUnidirectionalStreamId = $isClient ? -2 : -1;
         $this->nextBidirectionalStreamId = $isClient ? -4 : -3;
         $this->sendInfo = quiche_send_info_ptr::array();
+        $this->scidRetirePtr = uint8_t_ptr_ptr::array();
     }
 
     public function isServer() : bool{
@@ -206,10 +209,9 @@ class QuicheConnection{
     }
 
     private function handleSCIDs() : void{
-        /** @var uint8_t_ptr $scidRetirePtr */
         /** @var int $length */
-        while(($this->bindings->quiche_conn_retired_scid_next($this->connection, [&$scidRetirePtr], [&$length])) > 0){
-            $this->socket->removeSCID($scidRetirePtr->toString($length));
+        while(($this->bindings->quiche_conn_retired_scid_next($this->connection, $this->scidRetirePtr, [&$length])) > 0){
+            $this->socket->removeSCID($this->scidRetirePtr->deref()->toString($length));
         }
 
         while(($this->bindings->quiche_conn_scids_left($this->connection)) > 0){

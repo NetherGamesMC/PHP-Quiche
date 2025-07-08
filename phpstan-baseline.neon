@@ -16,6 +16,11 @@ parameters:
 			path: src/NetherGames/Quiche/Config.php
 
 		-
+			message: "#^Call to method deref\\(\\) on an unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr_ptr\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
 			message: "#^Call to method toString\\(\\) on an unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
 			count: 2
 			path: src/NetherGames/Quiche/QuicheConnection.php
@@ -23,6 +28,11 @@ parameters:
 		-
 			message: "#^Call to static method array\\(\\) on an unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
 			count: 2
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Call to static method array\\(\\) on an unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr_ptr\\.$#"
+			count: 1
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
 		-
@@ -37,6 +47,11 @@ parameters:
 
 		-
 			message: "#^Parameter \\$tempBuffer of method NetherGames\\\\Quiche\\\\QuicheConnection\\:\\:__construct\\(\\) has invalid type NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
+			count: 1
+			path: src/NetherGames/Quiche/QuicheConnection.php
+
+		-
+			message: "#^Property NetherGames\\\\Quiche\\\\QuicheConnection\\:\\:\\$scidRetirePtr has unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr_ptr as its type\\.$#"
 			count: 1
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
@@ -116,11 +131,6 @@ parameters:
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
 		-
-			message: "#^Undefined variable\\: \\$scidRetirePtr$#"
-			count: 2
-			path: src/NetherGames/Quiche/QuicheConnection.php
-
-		-
 			message: "#^Undefined variable\\: \\$seq$#"
 			count: 5
 			path: src/NetherGames/Quiche/QuicheConnection.php
@@ -148,11 +158,6 @@ parameters:
 		-
 			message: "#^Variable \\$peer might not be defined\\.$#"
 			count: 10
-			path: src/NetherGames/Quiche/QuicheConnection.php
-
-		-
-			message: "#^Variable \\$scidRetirePtr in PHPDoc tag @var does not exist\\.$#"
-			count: 1
 			path: src/NetherGames/Quiche/QuicheConnection.php
 
 		-

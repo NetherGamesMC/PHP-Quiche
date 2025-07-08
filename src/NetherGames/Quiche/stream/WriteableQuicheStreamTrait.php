@@ -23,14 +23,14 @@ trait WriteableQuicheStreamTrait{
     private bool $writable = true;
 
     public function handleOutgoing() : void{
-        if($this->reader === null){
+        if($this->reader === null || !$this->isWritable()){
             return;
         }
 
         $written = BufferUtils::tryWrite(
             $this->reader,
             $this->writeClosure ??= function(string $data, int $length, bool $isLast) : int{
-                if($fin = ($isLast && $this->shouldShutdownWriting())){
+                if($fin = ($isLast && $this->shouldShutdownWriting)){
                     $this->onShutdownWriting(false);
                 }
 
@@ -58,6 +58,10 @@ trait WriteableQuicheStreamTrait{
             throw new RuntimeException("Stream already has a writer");
         }
 
+        if(!$this->isWritable()){
+            throw new RuntimeException("Stream is not writable");
+        }
+
         [$read, $write] = Buffer::create(fn() => $this->handleOutgoing());
         $this->reader = $read;
 
@@ -66,10 +70,6 @@ trait WriteableQuicheStreamTrait{
 
     public function isWritable() : bool{
         return $this->writable;
-    }
-
-    public function shouldShutdownWriting() : bool{
-        return $this->shouldShutdownWriting;
     }
 
     protected function onShutdownWriting(bool $peerClosed) : void{
@@ -92,16 +92,16 @@ trait WriteableQuicheStreamTrait{
             throw new RuntimeException("Stream is already closed");
         }
 
-        if($this->shouldShutdownWriting()){
+        if($this->shouldShutdownWriting){
             throw new RuntimeException("Stream is already marked for shutdown");
         }
 
-        if($this->reader?->isEmpty()){
+        if($this->reader === null || $this->reader->isEmpty()){
             $this->bindings->quiche_conn_stream_send($this->connection, $this->id, null, 0, 1, [&$outErrorCode]);
             $this->onShutdownWriting(false);
         }else{
             $this->shouldShutdownWriting = true;
-            $this->reader?->close();
+            $this->reader->close();
         }
     }
 

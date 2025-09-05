@@ -230,7 +230,7 @@ class QuicheConnection{
         }
     }
 
-    public function probePath(SocketAddress $from = null, SocketAddress $to = null) : bool{
+    public function probePath(?SocketAddress $from = null, ?SocketAddress $to = null) : bool{
         if($this->isServer()){
             throw new RuntimeException("Path probing is not supported on server connections");
         }

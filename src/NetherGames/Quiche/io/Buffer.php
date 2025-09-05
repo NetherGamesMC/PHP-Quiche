@@ -17,7 +17,7 @@ class Buffer{
      *
      * @return array{0: QueueReader, 1: QueueWriter}
      */
-    public static function create(Closure $onWrite = null) : array{
+    public static function create(?Closure $onWrite = null) : array{
         $buffer = new self($onWrite);
 
         return [

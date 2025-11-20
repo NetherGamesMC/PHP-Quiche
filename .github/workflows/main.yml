@@ -9,7 +9,7 @@ jobs:
     env:
       QUICHE_VERSION: 0.24.4
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Cache Quiche
         id: cache-quiche

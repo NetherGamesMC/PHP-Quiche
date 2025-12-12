@@ -13,7 +13,7 @@ jobs:
 
       - name: Cache Quiche
         id: cache-quiche
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: quiche-build
           key: "quiche-${{ env.QUICHE_VERSION }}"

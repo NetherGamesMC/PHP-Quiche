@@ -14,6 +14,8 @@ class MinimalQuicheStats{
     private int $receivedBytes;
     private int $lostBytes;
     private int $streamRetransmittedBytes;
+    private int $receivedDatagrams;
+    private int $sentDatagrams;
 
     public function __construct(quiche_stats|quiche_path_stats $stats){
         $this->receivedPackets = $stats->recv;
@@ -24,6 +26,8 @@ class MinimalQuicheStats{
         $this->receivedBytes = $stats->recv_bytes;
         $this->lostBytes = $stats->lost_bytes;
         $this->streamRetransmittedBytes = $stats->stream_retrans_bytes;
+        $this->receivedDatagrams = $stats->dgram_recv;
+        $this->sentDatagrams = $stats->dgram_sent;
     }
 
     public function getReceivedPackets() : int{
@@ -56,5 +60,13 @@ class MinimalQuicheStats{
 
     public function getStreamRetransmittedBytes() : int{
         return $this->streamRetransmittedBytes;
+    }
+
+    public function getReceivedDatagrams() : int{
+        return $this->receivedDatagrams;
+    }
+
+    public function getSentDatagrams() : int{
+        return $this->sentDatagrams;
     }
 }

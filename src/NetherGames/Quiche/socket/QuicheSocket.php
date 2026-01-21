@@ -111,7 +111,7 @@ abstract class QuicheSocket{
     }
 
     protected function getRandomSocketId() : int{
-        return array_values($this->udpSocketIds)[array_rand($this->udpSocketIds)];
+        return $this->udpSocketIds[array_rand($this->udpSocketIds)];
     }
 
     /**

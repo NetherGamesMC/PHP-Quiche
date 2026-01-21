@@ -13,12 +13,16 @@ class QuichePathStats extends MinimalQuicheStats{
 
     private int $validationState;
     private bool $active;
+    private int $probeTimeoutCount;
     private float $rtt;
     private float $minRTT;
+    private float $maxRTT;
     private float $rttVar;
     private int $congestionWindow;
     private int $pmtu;
     private int $deliveryRate;
+    private int $maxBandwidth;
+    private int $startupExitCongestionWindow;
 
     public static function getQuichePathStats(
         QuicheFFI $bindings,
@@ -39,12 +43,16 @@ class QuichePathStats extends MinimalQuicheStats{
 
         $this->validationState = $stats->validation_state;
         $this->active = (bool) $stats->active;
+        $this->probeTimeoutCount = $stats->total_pto_count;
         $this->rtt = $stats->rtt;
         $this->minRTT = $stats->min_rtt;
+        $this->maxRTT = $stats->max_rtt;
         $this->rttVar = $stats->rttvar;
         $this->congestionWindow = $stats->cwnd;
         $this->pmtu = $stats->pmtu;
         $this->deliveryRate = $stats->delivery_rate;
+        $this->maxBandwidth = $stats->max_bandwidth;
+        $this->startupExitCongestionWindow = $stats->startup_exit_cwnd;
     }
 
     public function getLocalAddress() : SocketAddress{
@@ -63,12 +71,20 @@ class QuichePathStats extends MinimalQuicheStats{
         return $this->active;
     }
 
+    public function getProbeTimeoutCount() : int{
+        return $this->probeTimeoutCount;
+    }
+
     public function getRTT() : float{
         return $this->rtt;
     }
 
     public function getMinRTT() : float{
         return $this->minRTT;
+    }
+
+    public function getMaxRTT() : float{
+        return $this->maxRTT;
     }
 
     public function getRTTVar() : float{
@@ -85,5 +101,13 @@ class QuichePathStats extends MinimalQuicheStats{
 
     public function getDeliveryRate() : int{
         return $this->deliveryRate;
+    }
+
+    public function getMaxBandwidth() : int{
+        return $this->maxBandwidth;
+    }
+
+    public function getStartupExitCongestionWindow() : int{
+        return $this->startupExitCongestionWindow;
     }
 }

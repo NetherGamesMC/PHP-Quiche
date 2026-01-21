@@ -22,6 +22,13 @@ class QuicheStats extends MinimalQuicheStats{
     private int $stoppedStreamCountLocal;
     private int $resetStreamCountRemote;
     private int $stoppedStreamCountRemote;
+    private int $blockedDataSentCount;
+    private int $blockedStreamDataSentCount;
+    private int $blockedDataReceivedCount;
+    private int $blockedStreamDataReceivedCount;
+    private int $receivedPathChallengeCount;
+    private int $inFlightBytesDurationMsec;
+    private bool $bufferSendInconsistent;
 
     public function __construct(
         QuicheFFI $bindings,
@@ -39,6 +46,13 @@ class QuicheStats extends MinimalQuicheStats{
         $this->stoppedStreamCountLocal = $stats->stopped_stream_count_local;
         $this->resetStreamCountRemote = $stats->reset_stream_count_remote;
         $this->stoppedStreamCountRemote = $stats->stopped_stream_count_remote;
+        $this->blockedDataSentCount = $stats->data_blocked_sent_count;
+        $this->blockedStreamDataSentCount = $stats->stream_data_blocked_sent_count;
+        $this->blockedDataReceivedCount = $stats->data_blocked_recv_count;
+        $this->blockedStreamDataReceivedCount = $stats->stream_data_blocked_recv_count;
+        $this->receivedPathChallengeCount = $stats->path_challenge_rx_count;
+        $this->inFlightBytesDurationMsec = $stats->bytes_in_flight_duration_msec;
+        $this->bufferSendInconsistent = (bool) $stats->tx_buffered_inconsistent;
     }
 
     /**
@@ -66,5 +80,33 @@ class QuicheStats extends MinimalQuicheStats{
 
     public function getStoppedStreamCountRemote() : int{
         return $this->stoppedStreamCountRemote;
+    }
+
+    public function getBlockedDataSentCount() : int{
+        return $this->blockedDataSentCount;
+    }
+
+    public function getBlockedStreamDataSentCount() : int{
+        return $this->blockedStreamDataSentCount;
+    }
+
+    public function getBlockedDataReceivedCount() : int{
+        return $this->blockedDataReceivedCount;
+    }
+
+    public function getBlockedStreamDataReceivedCount() : int{
+        return $this->blockedStreamDataReceivedCount;
+    }
+
+    public function getReceivedPathChallengeCount() : int{
+        return $this->receivedPathChallengeCount;
+    }
+
+    public function getInFlightBytesDurationMsec() : int{
+        return $this->inFlightBytesDurationMsec;
+    }
+
+    public function isBufferSendInconsistent() : bool{
+        return $this->bufferSendInconsistent;
     }
 }

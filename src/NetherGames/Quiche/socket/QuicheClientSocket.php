@@ -49,7 +49,7 @@ class QuicheClientSocket extends QuicheSocket{
     /**
      * Can also be used to reconnect
      */
-    public function connect(string $session = null) : QuicheConnection{
+    public function connect(?string $session = null) : QuicheConnection{
         if($this->connection !== null){
             throw new LogicException("Already connected");
         }

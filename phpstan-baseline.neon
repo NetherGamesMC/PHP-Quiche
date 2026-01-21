@@ -6,11 +6,6 @@ parameters:
 			path: src/NetherGames/Quiche/Config.php
 
 		-
-			message: "#^Cannot call method getData\\(\\) on array\\<int, int\\>\\.$#"
-			count: 1
-			path: src/NetherGames/Quiche/Config.php
-
-		-
 			message: "#^Parameter \\#1 \\$to of static method FFI\\:\\:memcpy\\(\\) expects FFI\\\\CData, \\(float\\|int\\) given\\.$#"
 			count: 1
 			path: src/NetherGames/Quiche/Config.php
@@ -206,6 +201,11 @@ parameters:
 			path: src/NetherGames/Quiche/socket/QuicheServerSocket.php
 
 		-
+			message: "#^Strict comparison using === between 1 and 1 will always evaluate to true.$#"
+			count: 1
+			path: src/NetherGames/Quiche/socket/QuicheServerSocket.php
+
+		-
 			message: "#^Call to an undefined method FFI\\:\\:quiche_enable_debug_logging\\(\\)\\.$#"
 			count: 1
 			path: src/NetherGames/Quiche/socket/QuicheSocket.php
@@ -217,11 +217,6 @@ parameters:
 
 		-
 			message: "#^Call to static method array\\(\\) on an unknown class NetherGames\\\\Quiche\\\\bindings\\\\uint8_t_ptr\\.$#"
-			count: 1
-			path: src/NetherGames/Quiche/socket/QuicheSocket.php
-
-		-
-			message: "#^Offset string does not exist on array\\<int, int\\>\\.$#"
 			count: 1
 			path: src/NetherGames/Quiche/socket/QuicheSocket.php
 

@@ -5,9 +5,9 @@ on: push
 jobs:
   phpunit:
     name: PHPUnit tests
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     env:
-      QUICHE_VERSION: 0.24.8
+      QUICHE_VERSION: 0.25.0
     steps:
       - uses: actions/checkout@v6
 
@@ -35,8 +35,8 @@ jobs:
       - name: Unpack PHP Release
         run: tar -xzvf PHP-8.4-Linux-x86_64-PM5.tar.gz
 
-      - name: Install libffi7
-        run: sudo apt update && sudo apt install -y --no-install-recommends libffi7
+      - name: Install libffi8
+        run: sudo apt update && sudo apt install -y --no-install-recommends libffi8
 
       - name: Download Composer
         run: curl -o ./bin/composer.phar "https://getcomposer.org/composer-stable.phar"

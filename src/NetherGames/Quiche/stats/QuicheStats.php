@@ -27,6 +27,8 @@ class QuicheStats extends MinimalQuicheStats{
     private int $blockedStreamDataSentCount;
     private int $blockedDataReceivedCount;
     private int $blockedStreamDataReceivedCount;
+    private int $blockedBidiStreamDataReceivedCount;
+    private int $blockedUniStreamDataReceivedCount;
     private int $receivedPathChallengeCount;
     private int $inFlightBytesDurationMsec;
     private bool $bufferSendInconsistent;
@@ -52,6 +54,8 @@ class QuicheStats extends MinimalQuicheStats{
         $this->blockedStreamDataSentCount = $stats->stream_data_blocked_sent_count;
         $this->blockedDataReceivedCount = $stats->data_blocked_recv_count;
         $this->blockedStreamDataReceivedCount = $stats->stream_data_blocked_recv_count;
+        $this->blockedBidiStreamDataReceivedCount = $stats->streams_blocked_bidi_recv_count;
+        $this->blockedUniStreamDataReceivedCount = $stats->streams_blocked_uni_recv_count;
         $this->receivedPathChallengeCount = $stats->path_challenge_rx_count;
         $this->inFlightBytesDurationMsec = $stats->bytes_in_flight_duration_msec;
         $this->bufferSendInconsistent = (bool) $stats->tx_buffered_inconsistent;
@@ -102,6 +106,14 @@ class QuicheStats extends MinimalQuicheStats{
 
     public function getBlockedStreamDataReceivedCount() : int{
         return $this->blockedStreamDataReceivedCount;
+    }
+
+    public function getBlockedBidiStreamDataReceivedCount() : int{
+        return $this->blockedBidiStreamDataReceivedCount;
+    }
+
+    public function getBlockedUniStreamDataReceivedCount() : int{
+        return $this->blockedUniStreamDataReceivedCount;
     }
 
     public function getReceivedPathChallengeCount() : int{

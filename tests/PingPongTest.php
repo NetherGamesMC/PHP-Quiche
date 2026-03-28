@@ -51,7 +51,6 @@ class PingPongTest extends TestCase{
         $socketConfig->setApplicationProtos(["pingpong"]);
         $socketConfig->setInitialMaxData(10000000);
         $socketConfig->setMaxIdleTimeout(2000);
-        $socketConfig->setPingInterval(1000);
     }
 
     private static function configureClient(QuicheClientSocket $client) : void{
@@ -120,7 +119,7 @@ class PingPongTest extends TestCase{
         $writer->write("ping");
 
         $stream->addShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedClient) : void{
-            self::assertTrue($peerClosed, "Peer closed should be false on server");
+            self::assertTrue($peerClosed, "Peer closed should be true on client");
             $streamClosedClient = self::checkWriter($writer);
         });
 
@@ -199,7 +198,7 @@ class PingPongTest extends TestCase{
         $writer->write("ping");
 
         $stream->addShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedClient) : void{
-            self::assertTrue($peerClosed, "Peer closed should be false on server");
+            self::assertTrue($peerClosed, "Peer closed should be true on client");
             $streamClosedClient = self::checkWriter($writer);
         });
 
@@ -268,7 +267,7 @@ class PingPongTest extends TestCase{
         $writer->write("ping");
 
         $stream->addShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedClient) : void{
-            self::assertTrue($peerClosed, "Peer closed should be false on server");
+            self::assertTrue($peerClosed, "Peer closed should be true on client");
             $streamClosedClient = self::checkWriter($writer);
         });
 
@@ -619,7 +618,7 @@ class PingPongTest extends TestCase{
         $writer->write("ping");
 
         $stream->addShutdownCallback(function(bool $peerClosed) use ($writer, &$streamClosedClient) : void{
-            self::assertTrue($peerClosed, "Peer closed should be false on server");
+            self::assertTrue($peerClosed, "Peer closed should be true on client");
             $streamClosedClient = self::checkWriter($writer);
         });
 

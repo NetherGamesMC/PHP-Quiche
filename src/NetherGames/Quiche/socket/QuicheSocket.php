@@ -10,6 +10,7 @@ use NetherGames\Quiche\bindings\QuicheFFI;
 use NetherGames\Quiche\bindings\string_;
 use NetherGames\Quiche\bindings\uint8_t_ptr;
 use NetherGames\Quiche\Config;
+use NetherGames\Quiche\io\Timer;
 use NetherGames\Quiche\QuicheConnection;
 use NetherGames\Quiche\SocketAddress;
 use RuntimeException;
@@ -32,6 +33,7 @@ abstract class QuicheSocket{
     protected uint8_t_ptr $tempBuffer;
     protected QuicheFFI $bindings;
     protected Config $config;
+    public readonly Timer $timer;
 
     /** @var array<int, Socket> */
     private array $sockets = [];
@@ -56,6 +58,9 @@ abstract class QuicheSocket{
         $this->bindings = QuicheBindings::ffi();
         $this->config = new Config($this->bindings);
         $this->tempBuffer = uint8_t_ptr::array(self::SEND_BUFFER_SIZE);
+        $this->timer = new Timer(static function(QuicheConnection $connection) : void{
+            $connection->onTimeout();
+        });
 
         if($enableDebugLogging){
             $this->bindings->getFFI()->quiche_enable_debug_logging(function(CData $a){
@@ -151,18 +156,20 @@ abstract class QuicheSocket{
      */
     abstract public function setNonWritableSocket(int $socketId) : void;
 
-    public function selectSockets(int $timeout) : void{
+    public function selectSockets(?int $timeout) : void{
         $read = $this->sockets;
         $write = $this->nonWritableSockets;
         $except = null;
 
-        $select = socket_select($read, $write, $except, 0, $timeout);
+        $this->timer->manage();
+
+        $select = socket_select($read, $write, $except, $timeout === null ? null : 0, $timeout ?? 0);
         if($select !== false && $select > 0){
-            foreach($read as $socketId => $socket){
-                $this->socketCallbacks[$socketId]();
-            }
             foreach($write as $socketId => $socket){
                 $this->nonWritableCallbacks[$socketId]();
+            }
+            foreach($read as $socketId => $socket){
+                $this->socketCallbacks[$socketId]();
             }
         }
 

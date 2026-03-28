@@ -14,8 +14,6 @@ class Config{
     private struct_quiche_config_ptr $config;
     private int $maxRecvUdpPayloadSize = 65527; // https://docs.quic.tech/src/quiche/lib.rs.html#1006
     private int $maxSendUdpPayloadSize = 1200; // https://docs.quic.tech/src/quiche/lib.rs.html#1012
-    private int $pingInterval = 0;
-    private int $maxIdleTimeout = 0;
     private bool $hasActiveMigration = true;
     private bool $enableStatelessRetry = false;
 
@@ -93,26 +91,6 @@ class Config{
         return $this;
     }
 
-    /**
-     * @param int $interval 0 = disabled (default)
-     */
-    public function setPingInterval(int $interval) : self{
-        if($interval < 0){
-            throw new InvalidArgumentException("PingInterval must be positive");
-        }
-
-        $this->pingInterval = $interval;
-
-        return $this;
-    }
-
-    /**
-     * @return int 0 = disabled
-     */
-    public function getPingInterval() : int{
-        return $this->pingInterval;
-    }
-
     public function setMaxAmplificationFactor(int $factor) : self{
         if($factor < 1){
             throw new InvalidArgumentException("MaxAmplificationFactor must be at least 1");
@@ -129,13 +107,8 @@ class Config{
         }
 
         $this->bindings->quiche_config_set_max_idle_timeout($this->config, $timeout);
-        $this->maxIdleTimeout = $timeout;
 
         return $this;
-    }
-
-    public function getMaxIdleTimeout() : int{
-        return $this->maxIdleTimeout;
     }
 
     public function setMaxRecvUdpPayloadSize(int $size) : self{
@@ -351,10 +324,6 @@ class Config{
 
     public function free() : void{
         $this->bindings->quiche_config_free($this->config);
-    }
-
-    public function hasKeepAliveEnabled() : bool{
-        return $this->pingInterval > 0;
     }
 
     public function discoverPMTUD(bool $v) : void{

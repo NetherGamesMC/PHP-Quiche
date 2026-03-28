@@ -30,7 +30,6 @@ use NetherGames\Quiche\stream\ReadableQuicheStream;
 use NetherGames\Quiche\stream\WriteableQuicheStream;
 use RuntimeException;
 use Socket;
-use function microtime;
 use function random_bytes;
 use function socket_sendto;
 use function strlen;
@@ -60,9 +59,6 @@ class QuicheConnection{
 
     /** @var array<int, Closure> */
     private array $eventHandlers = [];
-
-    private ?float $timeoutTime = null;
-    private ?float $pingTime = null;
 
     private bool $closed = false;
     private bool $isEstablished = false;
@@ -186,9 +182,6 @@ class QuicheConnection{
         $this->localAddress = $local;
         $this->peerAddress = $peer;
 
-        $this->scheduleTimeout();
-        $this->schedulePing();
-
         if($this->bindings->quiche_conn_is_closed($this->connection)){
             $this->onClosedByPeer();
 
@@ -227,6 +220,15 @@ class QuicheConnection{
                 false,
                 [&$seq]
             );
+        }
+    }
+
+    public function onTimeout() : void{
+        $this->bindings->quiche_conn_on_timeout($this->connection);
+        $this->send();
+
+        if($this->bindings->quiche_conn_is_closed($this->connection)){
+            $this->onClosedByPeer();
         }
     }
 
@@ -359,6 +361,8 @@ class QuicheConnection{
         if($this->onPeerClose !== null){
             ($this->onPeerClose)($isApp, $code, $reason?->toString($reasonLength));
         }
+
+        $this->socket->timer->stop($this);
     }
 
     public function isClosed() : bool{
@@ -398,10 +402,6 @@ class QuicheConnection{
         return true;
     }
 
-    private function ping() : void{
-        $this->bindings->quiche_conn_send_ack_eliciting($this->connection);
-    }
-
     /**
      * @return bool whether the connection is still alive
      */
@@ -411,8 +411,6 @@ class QuicheConnection{
 
             return false;
         }
-
-        $this->checkTimers();
 
         if($this->bindings->quiche_conn_is_established($this->connection) || $this->bindings->quiche_conn_is_in_early_data($this->connection)){
             if($this->isEstablished){
@@ -437,12 +435,15 @@ class QuicheConnection{
 
     private function send() : void{
         if($this->sendBuffer === null){
+            $sent = false;
+
             while(0 < ($written = $this->bindings->quiche_conn_send(
                     $this->connection,
                     $this->tempBuffer,
                     min($this->config->getMaxSendUdpPayloadSize(), $this->bindings->quiche_conn_send_quantum($this->connection)),
                     $this->sendInfo,
                 ))){
+                $sent = true;
 
                 $this->localAddress = SocketAddress::createFromFFI($this->sendInfo->from);
                 $this->peerAddress = SocketAddress::createFromFFI($this->sendInfo->to);
@@ -461,34 +462,10 @@ class QuicheConnection{
                 $this->socket->setNonWritableSocket($this->socketId);
                 break;
             }
-        }
-    }
-
-    public function schedulePing() : void{
-        if(($pingInterval = $this->config->getPingInterval()) !== 0){
-            $this->pingTime = microtime(true) + ($pingInterval / 1e3);
-        }
-    }
-
-    public function scheduleTimeout() : void{
-        if(($maxIdleTimeout = $this->config->getMaxIdleTimeout()) !== 0){
-            $this->timeoutTime = microtime(true) + ($maxIdleTimeout / 1e3);
-        }
-    }
-
-    public function checkTimers() : void{
-        if($this->timeoutTime !== null && microtime(true) > $this->timeoutTime){
-            $this->timeoutTime = null;
-            $this->bindings->quiche_conn_on_timeout($this->connection);
-            $this->send(); // send the timeout packet
-            $this->scheduleTimeout();
-        }
-
-        if($this->pingTime !== null && microtime(true) > $this->pingTime){
-            $this->pingTime = null;
-            $this->ping();
-            $this->send(); // send the ping packet
-            $this->schedulePing();
+            
+            if($sent){
+                $this->socket->timer->reset($this, $this->bindings->quiche_conn_timeout_as_millis($this->connection));
+            }
         }
     }
 
@@ -509,6 +486,8 @@ class QuicheConnection{
         foreach($this->streams as $stream){
             $stream->onConnectionClose(false);
         }
+
+        $this->socket->timer->stop($this);
     }
 
     public function openBidirectionalStream() : BiDirectionalQuicheStream{

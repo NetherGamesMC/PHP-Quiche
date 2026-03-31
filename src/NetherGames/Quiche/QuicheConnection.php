@@ -435,16 +435,12 @@ class QuicheConnection{
 
     private function send() : void{
         if($this->sendBuffer === null){
-            $sent = false;
-
             while(0 < ($written = $this->bindings->quiche_conn_send(
                     $this->connection,
                     $this->tempBuffer,
                     min($this->config->getMaxSendUdpPayloadSize(), $this->bindings->quiche_conn_send_quantum($this->connection)),
                     $this->sendInfo,
                 ))){
-                $sent = true;
-
                 $this->localAddress = SocketAddress::createFromFFI($this->sendInfo->from);
                 $this->peerAddress = SocketAddress::createFromFFI($this->sendInfo->to);
                 $this->socketId = $this->socket->getSocketIdBySocketAddress($this->localAddress);
@@ -462,11 +458,9 @@ class QuicheConnection{
                 $this->socket->setNonWritableSocket($this->socketId);
                 break;
             }
-            
-            if($sent){
-                $this->socket->timer->reset($this, $this->bindings->quiche_conn_timeout_as_millis($this->connection));
-            }
         }
+
+        $this->socket->timer->reset($this, $this->bindings->quiche_conn_timeout_as_millis($this->connection));
     }
 
     public function getSession() : string{

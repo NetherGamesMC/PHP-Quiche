@@ -8,7 +8,7 @@ use function microtime;
 use function spl_object_id;
 
 class Timer{
-    /** @var array<int, QuicheConnection> */
+    /** @var array<int, array{0: QuicheConnection, 1: int}> */
     private array $connections = [];
     private MinHeap $heap;
 
@@ -20,46 +20,49 @@ class Timer{
     }
 
     public function reset(QuicheConnection $conn, int $timeout) : void{
-        $id = spl_object_id($conn);
+        if($timeout < 0 || $timeout >= PHP_INT_MAX){
+            $this->stop($conn);
 
-        $this->connections[$id] = $conn;
-        $this->heap->insert([$timeout + (int) (microtime(true) * 1000), $id]);
+            return;
+        }
+
+        $id = spl_object_id($conn);
+        $timeout += (int) (microtime(true) * 1000);
+
+        [, $currentTimeout] = $this->connections[$id] ?? [null, null];
+        if($currentTimeout !== null && $currentTimeout <= $timeout){
+            return;
+        }
+
+        $this->connections[$id] = [$conn, $timeout];
+        $this->heap->insert([$timeout, $id]);
     }
 
     public function stop(QuicheConnection $conn) : void{
         unset($this->connections[spl_object_id($conn)]);
     }
 
-    public function getNextTimeout() : ?int{
+    public function manage() : ?int{
+        $now = (int) (microtime(true) * 1000);
+
         while(!$this->heap->isEmpty()){
             [$timeout, $connectionId] = $this->heap->top();
 
-            if(!isset($this->connections[$connectionId])){
-                $this->heap->extract();
-                continue;
-            }
-
-            return max(0, $timeout - (int) (microtime(true) * 1000));
-        }
-
-        return null;
-    }
-
-    public function manage() : void{
-        $now = null;
-        while(!$this->heap->isEmpty()){
-            [$timeout, $connectionId] = $this->heap->top();
-            if($timeout > $now ??= (int) (microtime(true) * 1000)){
-                break;
+            if($timeout > $now){
+                return $timeout - $now;
             }
 
             $this->heap->extract();
 
-            if(($connection = $this->connections[$connectionId] ?? null) === null){
+            [$connection, $currentTimeout] = $this->connections[$connectionId] ?? [null, null];
+            if($currentTimeout !== $timeout){
                 continue;
             }
 
+            unset($this->connections[$connectionId]);
             ($this->callback)($connection);
         }
+
+        return null;
     }
 }

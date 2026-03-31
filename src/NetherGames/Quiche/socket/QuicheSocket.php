@@ -16,6 +16,7 @@ use NetherGames\Quiche\SocketAddress;
 use RuntimeException;
 use Socket;
 use function array_values;
+use function min;
 use function socket_bind;
 use function socket_close;
 use function socket_create;
@@ -156,12 +157,17 @@ abstract class QuicheSocket{
      */
     abstract public function setNonWritableSocket(int $socketId) : void;
 
-    public function selectSockets(?int $timeout) : void{
+    public function selectSockets(?int $timeout = null) : void{
         $read = $this->sockets;
         $write = $this->nonWritableSockets;
         $except = null;
 
-        $this->timer->manage();
+        $timerWait = $this->timer->manage();
+        if ($timeout === null) {
+            $timeout = $timerWait;
+        } elseif ($timerWait !== null) {
+            $timeout = min($timerWait, $timeout);
+        }
 
         $select = socket_select($read, $write, $except, $timeout === null ? null : 0, $timeout ?? 0);
         if($select !== false && $select > 0){

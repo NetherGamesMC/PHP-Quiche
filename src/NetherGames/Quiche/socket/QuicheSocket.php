@@ -15,15 +15,17 @@ use NetherGames\Quiche\QuicheConnection;
 use NetherGames\Quiche\SocketAddress;
 use RuntimeException;
 use Socket;
+use Throwable;
 use function array_values;
 use function min;
 use function socket_bind;
 use function socket_close;
 use function socket_create;
 use function socket_last_error;
-use function socket_select;
+use function socket_set_nonblock;
 use function socket_strerror;
 use function spl_object_id;
+use function usleep;
 use const SOCK_DGRAM;
 use const SOL_UDP;
 
@@ -158,25 +160,27 @@ abstract class QuicheSocket{
     abstract public function setNonWritableSocket(int $socketId) : void;
 
     public function selectSockets(?int $timeout = null) : void{
-        $read = $this->sockets;
-        $write = $this->nonWritableSockets;
-        $except = null;
+        foreach($this->nonWritableCallbacks as $closure){
+            try {
+                $closure();
+            }catch (Throwable){}
+        }
+        foreach($this->socketCallbacks as $closure){
+            try {
+                $closure();
+            }catch (Throwable){}
+        }
 
         $timerWait = $this->timer->manage();
-        if ($timeout === null) {
+        if($timeout === null){
             $timeout = $timerWait;
-        } elseif ($timerWait !== null) {
+        }elseif($timerWait !== null){
             $timeout = min($timerWait, $timeout);
         }
 
-        $select = socket_select($read, $write, $except, $timeout === null ? null : 0, $timeout ?? 0);
-        if($select !== false && $select > 0){
-            foreach($write as $socketId => $socket){
-                $this->nonWritableCallbacks[$socketId]();
-            }
-            foreach($read as $socketId => $socket){
-                $this->socketCallbacks[$socketId]();
-            }
+        $timeout = min($timeout, 100);
+        if($timeout !== null && $timeout > 0){
+            usleep($timeout * 1000);
         }
 
         $this->handleOutgoing();
@@ -219,6 +223,8 @@ abstract class QuicheSocket{
         if(isset($this->nonWritableSockets[$socketId = spl_object_id($socket)])){
             return false;
         }
+
+        socket_set_nonblock($socket);
 
         $this->sockets[$socketId] = $socket;
         $this->socketCallbacks[$socketId] = $callback;

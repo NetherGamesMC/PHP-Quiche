@@ -11,11 +11,11 @@ use NetherGames\Quiche\bindings\string_;
 use NetherGames\Quiche\bindings\uint8_t_ptr;
 use NetherGames\Quiche\Config;
 use NetherGames\Quiche\io\Timer;
+use NetherGames\Quiche\io\TimerFd;
 use NetherGames\Quiche\QuicheConnection;
 use NetherGames\Quiche\SocketAddress;
 use RuntimeException;
 use Socket;
-use Throwable;
 use function array_values;
 use function min;
 use function socket_bind;
@@ -25,7 +25,6 @@ use function socket_last_error;
 use function socket_set_nonblock;
 use function socket_strerror;
 use function spl_object_id;
-use function usleep;
 use const SOCK_DGRAM;
 use const SOL_UDP;
 
@@ -37,11 +36,16 @@ abstract class QuicheSocket{
     protected QuicheFFI $bindings;
     protected Config $config;
     public readonly Timer $timer;
+    public readonly TimerFd $timerFd;
 
     /** @var array<int, Socket> */
     private array $sockets = [];
+    /** @var array<int, resource> */
+    private array $streams = [];
     /** @var array<int, Socket> */
     private array $nonWritableSockets = [];
+    /** @var array<int, Socket> */
+    private array $nonWritableStreams = [];
     /** @var array<int, Closure> */
     private array $nonWritableCallbacks = [];
     /** @var array<int, Closure> */
@@ -63,6 +67,12 @@ abstract class QuicheSocket{
         $this->tempBuffer = uint8_t_ptr::array(self::SEND_BUFFER_SIZE);
         $this->timer = new Timer(static function(QuicheConnection $connection) : void{
             $connection->onTimeout();
+        });
+
+        // File descriptor timer
+        $this->timerFd = new TimerFd();
+        $this->registerStream($this->timerFd->getStream(), function(): void{
+            $this->timerFd->read();
         });
 
         if($enableDebugLogging){
@@ -160,27 +170,30 @@ abstract class QuicheSocket{
     abstract public function setNonWritableSocket(int $socketId) : void;
 
     public function selectSockets(?int $timeout = null) : void{
-        foreach($this->nonWritableCallbacks as $closure){
-            try {
-                $closure();
-            }catch (Throwable){}
-        }
-        foreach($this->socketCallbacks as $closure){
-            try {
-                $closure();
-            }catch (Throwable){}
-        }
+        $read = $this->streams;
+        $write = $this->nonWritableStreams;
+        $except = null;
 
         $timerWait = $this->timer->manage();
-        if($timeout === null){
+        if ($timeout === null) {
             $timeout = $timerWait;
-        }elseif($timerWait !== null){
+        } elseif ($timerWait !== null) {
             $timeout = min($timerWait, $timeout);
         }
 
-        $timeout = min($timeout, 100);
-        if($timeout !== null && $timeout > 0){
-            usleep($timeout * 1000);
+        // Set timeout for the file descriptor. Instead of using stream_select for sleep, we use Linux-based fd timer
+        // to wake the current process. This has downsides, some devices do not support file descriptors like windows
+        // and macOS. If the timeout is null, we wait for 60 seconds until there's a new stream to select.
+        $this->timerFd->setTimeout($timeout !== null ? $timeout : 60_000);
+
+        $select = stream_select($read, $write, $except, null);
+        if($select !== false && $select > 0){
+            foreach($write as $socketId => $socket){
+                $this->nonWritableCallbacks[$socketId]();
+            }
+            foreach($read as $socketId => $socket){
+                $this->socketCallbacks[$socketId]();
+            }
         }
 
         $this->handleOutgoing();
@@ -191,7 +204,7 @@ abstract class QuicheSocket{
     }
 
     public function removeNonWritableSocket(int $socketId) : void{
-        unset($this->nonWritableSockets[$socketId], $this->nonWritableCallbacks[$socketId]);
+        unset($this->nonWritableSockets[$socketId], $this->nonWritableStreams[$socketId], $this->nonWritableCallbacks[$socketId]);
     }
 
     /**
@@ -205,6 +218,7 @@ abstract class QuicheSocket{
         }
 
         $this->nonWritableSockets[$socketId] = $socket;
+        $this->nonWritableStreams[$socketId] = socket_import_stream($socket);
         $this->nonWritableCallbacks[$socketId] = $callback;
 
         return true;
@@ -227,6 +241,24 @@ abstract class QuicheSocket{
         socket_set_nonblock($socket);
 
         $this->sockets[$socketId] = $socket;
+        $this->streams[$socketId] = socket_export_stream($socket);
+        $this->socketCallbacks[$socketId] = $callback;
+
+        return true;
+    }
+
+    /**
+     * @param resource $stream
+     * @param Closure $callback function() : void
+     *
+     * @return bool whether the socket was registered
+     */
+    public function registerStream($stream, Closure $callback): bool{
+        if(isset($this->nonWritableSockets[$socketId = (int)$stream])){
+            return false;
+        }
+
+        $this->streams[$socketId] = $stream;
         $this->socketCallbacks[$socketId] = $callback;
 
         return true;

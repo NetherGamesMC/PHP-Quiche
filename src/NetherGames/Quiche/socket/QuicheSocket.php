@@ -44,7 +44,7 @@ abstract class QuicheSocket{
     private array $streams = [];
     /** @var array<int, Socket> */
     private array $nonWritableSockets = [];
-    /** @var array<int, Socket> */
+    /** @var array<int, resource> */
     private array $nonWritableStreams = [];
     /** @var array<int, Closure> */
     private array $nonWritableCallbacks = [];

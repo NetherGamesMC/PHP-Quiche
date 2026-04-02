@@ -70,10 +70,7 @@ abstract class QuicheSocket{
         });
 
         // File descriptor timer
-        $this->timerFd = new TimerFd();
-        $this->registerStream($this->timerFd->getStream(), function(): void{
-            $this->timerFd->read();
-        });
+        $this->timerFd = new TimerFd($this);
 
         if($enableDebugLogging){
             $this->bindings->getFFI()->quiche_enable_debug_logging(function(CData $a){
@@ -146,6 +143,7 @@ abstract class QuicheSocket{
 
         $this->sockets = [];
         $this->socketCallbacks = [];
+        $this->timerFd->close();
 
         $this->closed = true;
     }
@@ -181,12 +179,17 @@ abstract class QuicheSocket{
             $timeout = min($timerWait, $timeout);
         }
 
-        // Set timeout for the file descriptor. Instead of using stream_select for sleep, we use Linux-based fd timer
-        // to wake the current process. This has downsides, some devices do not support file descriptors like windows
-        // and macOS. If the timeout is null, we wait for 60 seconds until there's a new stream to select.
-        $this->timerFd->setTimeout($timeout !== null ? $timeout : 60_000);
+        if ($this->timerFd->getTimerFdId() !== -1) {
+            // Set timeout for the file descriptor. Instead of using stream_select for sleep, we use Linux-based fd timer
+            // to wake the current process. This has downsides, some devices do not support file descriptors like windows
+            // and macOS. If the timeout is null, we wait for 60 seconds until there's a new stream to select.
+            $this->timerFd->setTimeout($timeout !== null ? $timeout : 60_000);
 
-        $select = stream_select($read, $write, $except, null);
+            $select = stream_select($read, $write, $except, null);
+        } else {
+            $select = stream_select($read, $write, $except, $timeout === null ? null : 0, $timeout ?? 0);
+        }
+
         if($select !== false && $select > 0){
             foreach($write as $socketId => $socket){
                 $this->nonWritableCallbacks[$socketId]();
@@ -218,8 +221,12 @@ abstract class QuicheSocket{
         }
 
         $this->nonWritableSockets[$socketId] = $socket;
-        $this->nonWritableStreams[$socketId] = socket_import_stream($socket);
         $this->nonWritableCallbacks[$socketId] = $callback;
+
+        $stream = socket_export_stream($socket);
+        if(is_resource($stream)){
+            $this->nonWritableStreams[$socketId] = $stream;
+        }
 
         return true;
     }
@@ -241,8 +248,12 @@ abstract class QuicheSocket{
         socket_set_nonblock($socket);
 
         $this->sockets[$socketId] = $socket;
-        $this->streams[$socketId] = socket_export_stream($socket);
         $this->socketCallbacks[$socketId] = $callback;
+
+        $stream = socket_export_stream($socket);
+        if(is_resource($stream)){
+            $this->streams[$socketId] = $stream;
+        }
 
         return true;
     }

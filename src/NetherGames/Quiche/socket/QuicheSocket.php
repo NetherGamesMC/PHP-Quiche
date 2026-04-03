@@ -69,7 +69,6 @@ abstract class QuicheSocket{
             $connection->onTimeout();
         });
 
-        // File descriptor timer
         $this->timerFd = new TimerFd($this);
 
         if($enableDebugLogging){
@@ -173,20 +172,20 @@ abstract class QuicheSocket{
         $except = null;
 
         $timerWait = $this->timer->manage();
-        if ($timeout === null) {
+        if($timeout === null){
             $timeout = $timerWait;
-        } elseif ($timerWait !== null) {
+        }elseif($timerWait !== null){
             $timeout = min($timerWait, $timeout);
         }
 
-        if ($this->timerFd->getTimerFdId() !== -1) {
+        if($this->timerFd->getTimerFdId() !== -1){
             // Set timeout for the file descriptor. Instead of using stream_select for sleep, we use Linux-based fd timer
             // to wake the current process. This has downsides, some devices do not support file descriptors like windows
             // and macOS. If the timeout is null, we wait for 60 seconds until there's a new stream to select.
             $this->timerFd->setTimeout($timeout !== null ? $timeout : 60_000);
 
             $select = stream_select($read, $write, $except, null);
-        } else {
+        }else{
             $select = stream_select($read, $write, $except, $timeout === null ? null : 0, $timeout ?? 0);
         }
 
@@ -260,12 +259,12 @@ abstract class QuicheSocket{
 
     /**
      * @param resource $stream
-     * @param Closure $callback function() : void
+     * @param Closure  $callback function() : void
      *
      * @return bool whether the socket was registered
      */
-    public function registerStream($stream, Closure $callback): bool{
-        if(isset($this->nonWritableSockets[$socketId = (int)$stream])){
+    public function registerStream($stream, Closure $callback) : bool{
+        if(isset($this->nonWritableSockets[$socketId = (int) $stream])){
             return false;
         }
 

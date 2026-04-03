@@ -29,7 +29,7 @@ if(!file_exists($quichePHPFile)){
     file_put_contents($quichePHPFile, "<?php declare(strict_types=1);\n" . $quiche->compile('NetherGames\Quiche\bindings\Quiche', ($argv[2] ?? "") === "dev"));
 }
 
-if (!file_exists($timerFdPHPFile)) {
+if(!file_exists($timerFdPHPFile)){
     $timerHFile = getenv("TIMERFD_H_FILE");
     if($timerHFile === false || !is_file($timerHFile)){
         $timerHFile = __DIR__ . "/timerfd.h";

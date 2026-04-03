@@ -21,6 +21,8 @@ class TimerFd
     private $stream;
     /** @var int_ptr */
     private int_ptr $buffer;
+    /** @var struct_itimerspec_ptr */
+    private struct_itimerspec_ptr $timer;
 
     public function __construct(QuicheSocket $instance)
     {
@@ -33,12 +35,18 @@ class TimerFd
             throw new RuntimeException("Failed to create timerfd");
         }
 
-        $this->buffer = int_ptr::array(8);
         if (!($stream = fopen("php://fd/" . $this->fd, "rb"))) {
             throw new RuntimeException("Failed to open timerfd stream");
         }
 
         $this->stream = $stream;
+
+        // Initialize timer and buffer once; it_interval defines how often the timer should trigger,
+        // while it_value defines when the timer should trigger next (We don't want the timer to restart in an interval)
+        $this->buffer = int_ptr::array(8);
+        $this->timer = struct_itimerspec_ptr::array();
+        $this->timer->it_interval->tv_sec = 0;
+        $this->timer->it_interval->tv_nsec = 0;
 
         // Register stream
         $instance->registerStream($this->getStream(), function (): void {
@@ -50,7 +58,7 @@ class TimerFd
     {
         if ($this->fd === -1) return;
 
-        $timer = struct_itimerspec_ptr::array();
+        $timer = $this->timer;
         if ($timeoutMs === 0) {
             // Set it to absolute time in the past to trigger immediately
             $timer->it_value->tv_sec = 1;
@@ -61,9 +69,6 @@ class TimerFd
             $timer->it_value->tv_nsec = ($timeoutMs % 1000) * 1000000;
             $flags = 0;
         }
-
-        $timer->it_interval->tv_sec = 0;
-        $timer->it_interval->tv_nsec = 0;
 
         if ($this->ffi->timerfd_settime($this->fd, $flags, $timer, null) === -1) {
             throw new RuntimeException("Failed to set timerfd time");

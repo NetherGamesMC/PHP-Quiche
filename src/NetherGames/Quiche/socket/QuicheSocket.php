@@ -182,7 +182,7 @@ abstract class QuicheSocket{
             // Set timeout for the file descriptor. Instead of using stream_select for sleep, we use Linux-based fd timer
             // to wake the current process. This has downsides, some devices do not support file descriptors like windows
             // and macOS. If the timeout is null, we wait for 60 seconds until there's a new stream to select.
-            $this->timerFd->setTimeout($timeout !== null ? $timeout : 60_000);
+            $this->timerFd->setTimeout($timeout === null ? 60_000 : $timeout);
 
             $select = stream_select($read, $write, $except, null);
         }else{

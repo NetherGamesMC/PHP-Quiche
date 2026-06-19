@@ -9,7 +9,7 @@ jobs:
     env:
       QUICHE_VERSION: 0.29.2
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install dependencies
         run: sudo apt update && sudo apt install -y --no-install-recommends libffi8 libfontconfig1-dev

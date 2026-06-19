@@ -134,6 +134,9 @@ enum quiche_error {
     // The peer send an ACK frame for a skipped packet used for Optimistic ACK
     // mitigation.
     QUICHE_ERR_OPTIMISTIC_ACK_DETECTED = -22,
+
+    /// An invalid DCID was used when connecting to a remote peer.
+    QUICHE_ERR_INVALID_DCID_INITIALIZATION = -23,
 };
 
 // Returns a human readable string with the quiche version number.
@@ -246,6 +249,15 @@ void quiche_config_enable_hystart(quiche_config *config, bool v);
 // Configures whether to enable pacing (enabled by default).
 void quiche_config_enable_pacing(quiche_config *config, bool v);
 
+// Configures whether to enable the CUBIC idle restart fix (enabled by default).
+void quiche_config_set_enable_cubic_idle_restart_fix(quiche_config *config,
+                                                     bool v);
+
+// Configures whether to use the initial max data value as the initial flow
+// control window for streams and the connection (disabled by default).
+void quiche_config_set_use_initial_max_data_as_flow_control_win(
+    quiche_config *config, bool v);
+
 // Configures max pacing rate to be used.
 void quiche_config_set_max_pacing_rate(quiche_config *config, uint64_t v);
 
@@ -321,6 +333,13 @@ quiche_conn *quiche_conn_new_with_tls(const uint8_t *scid, size_t scid_len,
                                       const struct sockaddr *peer, socklen_t peer_len,
                                       const quiche_config *config, void *ssl,
                                       bool is_server);
+
+// Needs to have custom-client-dcid feature enabled on compile time. Otherwise will always return NULL.
+quiche_conn *quiche_conn_new_with_tls_and_client_dcid(const uint8_t *scid, size_t scid_len,
+                                      const uint8_t *dcid, size_t dcid_len,
+                                      const struct sockaddr *local, socklen_t local_len,
+                                      const struct sockaddr *peer, socklen_t peer_len,
+                                      const quiche_config *config, void *ssl);
 
 // Enables keylog to the specified file path. Returns true on success.
 bool quiche_conn_set_keylog_path(quiche_conn *conn, const char *path);
@@ -617,6 +636,16 @@ typedef struct {
     // The number of STREAM_DATA_BLOCKED frames received from the remote.
     uint64_t stream_data_blocked_recv_count;
 
+    // The number of STREAMS_BLOCKED frames for bidirectional streams received
+    // from the remote, indicating the peer is blocked on opening new
+    // bidirectional streams.
+    uint64_t streams_blocked_bidi_recv_count;
+
+    // The number of STREAMS_BLOCKED frames for unidirectional streams received
+    // from the remote, indicating the peer is blocked on opening new
+    // unidirectional streams.
+    uint64_t streams_blocked_uni_recv_count;
+
     // The total number of PATH_CHALLENGE frames that were received.
     uint64_t path_challenge_rx_count;
 
@@ -813,8 +842,10 @@ ssize_t quiche_conn_send_ack_eliciting_on_path(quiche_conn *conn,
                            const struct sockaddr *local, socklen_t local_len,
                            const struct sockaddr *peer, socklen_t peer_len);
 
-// Returns true if there are retired source connection ids and fill the parameters
-bool quiche_conn_retired_scid_next(const quiche_conn *conn, const uint8_t **out, size_t *out_len);
+// Drains and collects all currently retired source connection IDs into an
+// iterator. The caller must use quiche_connection_id_iter_next() to iterate and
+// quiche_connection_id_iter_free() to free the iterator.
+quiche_connection_id_iter *quiche_conn_retired_scid_iter(quiche_conn *conn);
 
 // Returns the number of source Connection IDs that are retired.
 size_t quiche_conn_retired_scids(const quiche_conn *conn);

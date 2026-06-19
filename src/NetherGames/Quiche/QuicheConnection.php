@@ -202,10 +202,14 @@ class QuicheConnection{
     }
 
     private function handleSCIDs() : void{
+        $iter = $this->bindings->quiche_conn_retired_scid_iter($this->connection);
+
         /** @var int $length */
-        while(($this->bindings->quiche_conn_retired_scid_next($this->connection, $this->scidRetirePtr, [&$length])) > 0){
+        while($this->bindings->quiche_connection_id_iter_next($iter, $this->scidRetirePtr, [&$length])){
             $this->socket->removeSCID($this->scidRetirePtr->deref()->toString($length));
         }
+
+        $this->bindings->quiche_connection_id_iter_free($iter);
 
         while(($this->bindings->quiche_conn_scids_left($this->connection)) > 0){
             $scid = random_bytes($scidLength = QuicheBindings::QUICHE_MAX_CONN_ID_LEN);

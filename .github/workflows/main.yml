@@ -21,7 +21,7 @@ jobs:
           path: quiche-build
           key: "quiche-${{ env.QUICHE_VERSION }}"
 
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
         if: steps.cache-quiche.outputs.cache-hit != 'true'
       - name: build-quiche
         if: steps.cache-quiche.outputs.cache-hit != 'true'

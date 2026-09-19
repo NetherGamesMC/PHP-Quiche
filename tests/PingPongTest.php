@@ -11,6 +11,7 @@ use NetherGames\Quiche\QuicheConnection;
 use NetherGames\Quiche\socket\QuicheClientSocket;
 use NetherGames\Quiche\socket\QuicheServerSocket;
 use NetherGames\Quiche\SocketAddress;
+use NetherGames\Quiche\stats\QuichePathStats;
 use NetherGames\Quiche\stream\BiDirectionalQuicheStream;
 use NetherGames\Quiche\stream\QuicheStream;
 use PHPUnit\Framework\TestCase;
@@ -62,6 +63,16 @@ class PingPongTest extends TestCase{
         self::configureBaseSocket($serverConfig = $server->getConfig());
         $serverConfig->loadPrivKeyFromFile(__DIR__ . "/certificates/key.pem");
         $serverConfig->loadCertChainFromFile(__DIR__ . "/certificates/cert.pem");
+    }
+
+    private static function getActivePath(QuicheConnection $connection) : QuichePathStats{
+        foreach($connection->getStats()->getPaths() as $path){
+            if($path->isActive()){
+                return $path;
+            }
+        }
+
+        self::fail("No active path found");
     }
 
     private static function checkWriter(QueueWriter $writer) : bool{
@@ -325,7 +336,7 @@ class PingPongTest extends TestCase{
                     }
                 });
             }else if($stream === null){
-                $serverConnection = $connection;
+                $serverConnection ??= $connection;
                 $connection->setPeerCloseCallback(function(bool $applicationError, int $error, ?string $reason) : void{
                     self::fail("Server should not receive a shutdown callback");
                 });
@@ -376,8 +387,8 @@ class PingPongTest extends TestCase{
             $server->tick();
         }
 
-        self::assertTrue($serverConnection->getLocalAddress()->getPort() === 19134, "Port should be 19134");
-        self::assertTrue($clientConnection->getPeerAddress()->getPort() === 19134, "Port should be 19134");
+        self::assertTrue(self::getActivePath($serverConnection)->getLocalAddress()->getPort() === 19134, "Port should be 19134");
+        self::assertTrue(self::getActivePath($clientConnection)->getPeerAddress()->getPort() === 19134, "Port should be 19134");
 
         $server->close(false, 0, "Bye");
     }

@@ -41,8 +41,12 @@ class BiDirectionalQuicheStream extends QuicheStream{
 
     protected function onPartialClose(bool $peerClosed) : void{
         // HACK: Check if the stream is closed due to STOP_SENDING when it's no longer readable
-        if($this->isWritable() && $this->bindings->quiche_conn_stream_writable($this->connection, $this->id, 0) === QuicheBindings::QUICHE_ERR_INVALID_STREAM_STATE){
-            $this->onShutdownWriting(true); // only way of checking STOP_SENDING :( : https://github.com/cloudflare/quiche/issues/1299
+        if($this->isWritable()){
+            $writable = $this->bindings->quiche_conn_stream_writable($this->connection, $this->id, 0);
+
+            if($writable === QuicheBindings::QUICHE_ERR_INVALID_STREAM_STATE || $writable === QuicheBindings::QUICHE_ERR_STREAM_STOPPED){
+                $this->onShutdownWriting(true); // only way of checking STOP_SENDING :( : https://github.com/cloudflare/quiche/issues/1299
+            }
         }
 
         parent::onPartialClose($peerClosed);
